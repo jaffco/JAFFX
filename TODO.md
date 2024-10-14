@@ -1,0 +1,6 @@
+- Finish Readme
+- Choose License
+- Test & Revise Jaffx Header & Template
+- Test & Revise `init.sh`
+- Implement & Test `run.sh`
+- Implement & Test `.vscode` folder

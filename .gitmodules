@@ -1,0 +1,6 @@
+[submodule "Gimmel"]
+	path = Gimmel
+	url = https://github.com/Mahdi03/Gimmel
+[submodule "libDaisy"]
+	path = libDaisy
+	url = https://github.com/electro-smith/libDaisy
