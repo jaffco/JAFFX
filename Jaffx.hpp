@@ -2,36 +2,38 @@
 using namespace daisy;
 
 namespace Jaffx {
-  static DaisySeed hardware;
+  struct Program {
+    // declare an instance of the hardware
+    static DaisySeed hardware;
+    static Program* instance; // Static pointer to the current instance of Program
 
-  // overridable per-sample operation
-  inline float processAudio(float in) {return in;}
+    // overridable per-sample operation
+    inline virtual float processAudio(float in) {return in;}
 
-  // basic mono->dual-mono callback
-  static void AudioCallback(AudioHandle::InterleavingInputBuffer  in,
-                            AudioHandle::InterleavingOutputBuffer out,
-                            size_t                                size)
-  {
-    for(size_t i = 0; i < size; i += 2)
-    {
-      // left out
-      out[i] = processAudio(in[i]);
-
-      // right out
-      out[i + 1] = out[i];
+    // basic mono->dual-mono callback
+    static void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
+      for (size_t i = 0; i < size; i++) {
+        out[0][i] = instance->processAudio(in[0][i]); // format is in/out[channel][sample]
+        out[1][i] = out[0][i];
+      }
     }
-  }
 
-  int start(void)
-  {
-    // initialize hardware
-    hardware.Init();
-    hardware.SetAudioBlockSize(4);
+    void start() {
+      // initialize hardware
+      hardware.Init();
+      hardware.SetAudioBlockSize(4); // number of samples handled per callback (buffer size)
+      hardware.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ); // sample rate
 
-    // start callback
-    hardware.StartAudio(AudioCallback);
+      // init instance and start callback
+      instance = this;
+      hardware.StartAudio(AudioCallback);
 
-    // loop indefinitely 
-    while(1) {}
-  }
-}
+      // loop indefinitely
+      while(1) {}
+    }
+  };
+
+  // Global instancing of static members
+  DaisySeed Program::hardware; 
+  Program* Program::instance = nullptr;
+} // namespace Jaffx
