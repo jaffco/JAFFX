@@ -1,4 +1,4 @@
-- Finish Readme
+- Expand Readme
 - Choose License
 - Test & Revise Jaffx Header & Template
 - Test & Revise `init.sh`
