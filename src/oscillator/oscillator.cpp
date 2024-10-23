@@ -6,7 +6,7 @@ struct Oscillator : Jaffx::Program {
   giml::SinOsc<float> osc;
 
   // constructor that inits members
-  Oscillator() : osc(48000) { // <- fixed. was: (int)(hardware.AudioSampleRate())
+  Oscillator() : osc(samplerate) {
     osc.setFrequency(220.f);
   }
 
