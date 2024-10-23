@@ -7,6 +7,9 @@ namespace Jaffx {
     static DaisySeed hardware;
     static Program* instance; // Static pointer to the current instance of Program
 
+    const int samplerate = 48000;
+    const int buffersize = 4;
+
     // overridable per-sample operation
     inline virtual float processAudio(float in) {return in;}
 
@@ -21,7 +24,7 @@ namespace Jaffx {
     void start() {
       // initialize hardware
       hardware.Init();
-      hardware.SetAudioBlockSize(4); // number of samples handled per callback (buffer size)
+      hardware.SetAudioBlockSize(buffersize); // number of samples handled per callback (buffer size)
       hardware.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ); // sample rate
 
       // init instance and start callback
