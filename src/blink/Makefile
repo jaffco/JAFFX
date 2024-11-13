@@ -1,8 +1,8 @@
 # Project Name
-TARGET = test
+TARGET = blink
 
 # Sources
-CPP_SOURCES = test.cpp
+CPP_SOURCES = blink.cpp
 
 # Library Locations
 LIBDAISY_DIR = ../../libDaisy
