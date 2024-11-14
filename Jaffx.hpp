@@ -10,6 +10,9 @@ namespace Jaffx {
     const int samplerate = 48000;
     const int buffersize = 4;
 
+    // overridable init function
+    inline virtual void init() {}
+
     // overridable per-sample operation
     inline virtual float processAudio(float in) {return in;}
 
@@ -29,6 +32,7 @@ namespace Jaffx {
 
       // init instance and start callback
       instance = this;
+      this->init();
       hardware.StartAudio(AudioCallback);
 
       // loop indefinitely
