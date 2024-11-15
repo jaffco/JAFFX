@@ -16,6 +16,9 @@ namespace Jaffx {
     // overridable per-sample operation
     inline virtual float processAudio(float in) {return in;}
 
+    // overridable loop operation
+    inline virtual void loop() {}
+
     // basic mono->dual-mono callback
     static void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
       for (size_t i = 0; i < size; i++) {
@@ -36,7 +39,7 @@ namespace Jaffx {
       hardware.StartAudio(AudioCallback);
 
       // loop indefinitely
-      while(1) {}
+      while(1) {this->loop();}
     }
   };
 
