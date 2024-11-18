@@ -5,6 +5,7 @@
 import os
 import sys
 import shutil
+import re
 
 def generate_project(project_name):
     # Define paths
@@ -29,21 +30,31 @@ def generate_project(project_name):
     # Create new project directory
     os.makedirs(new_project_dir)
     
-    # Copy template files
+    # Rename files
     for filename in os.listdir(template_dir):
-        src_path = os.path.join(template_dir, filename)
-        dst_path = os.path.join(new_project_dir, filename)
+        # Replace 'template' in filename
+        new_filename = filename.replace('template', project_name)
         
-        # Copy file
+        # Copy file with new name
+        src_path = os.path.join(template_dir, filename)
+        dst_path = os.path.join(new_project_dir, new_filename)
+        
         shutil.copy2(src_path, dst_path)
         
         # Read and replace contents
         with open(dst_path, 'r') as f:
             content = f.read()
         
-        # Replace template with project name (both lowercase and capitalized)
-        content = content.replace('template', project_name)
-        content = content.replace('Template', project_name.capitalize())
+        # Replace class name
+        # First letter capitalized version of project name
+        class_name = project_name[0].upper() + project_name[1:]
+        
+        # Replace variations
+        content = re.sub(r'\bTemplate\b', class_name, content)
+        content = re.sub(r'\btemplate\b', project_name, content)
+        
+        # Replace instance variable if needed
+        content = re.sub(r'm(T|t)emplate', f'm{class_name}', content)
         
         # Write modified content back
         with open(dst_path, 'w') as f:
