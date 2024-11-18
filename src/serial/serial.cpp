@@ -1,5 +1,4 @@
 #include "../../Jaffx.hpp"
-#include <string>
 
 struct Serial : Jaffx::Program {
   const char message[7] = "Hello!";
@@ -19,7 +18,7 @@ struct Serial : Jaffx::Program {
   }
 };
 
-int main(void) {
+int main() {
   Serial mSerial;
   mSerial.start();
 }
