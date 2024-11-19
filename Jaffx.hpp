@@ -19,12 +19,18 @@ namespace Jaffx {
     // overridable loop operation
     inline virtual void loop() {}
 
+    // overridable block start/end operation
+    inline virtual void blockStart() {}
+    inline virtual void blockEnd() {}
+
     // basic mono->dual-mono callback
     static void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
+      instance->blockStart();
       for (size_t i = 0; i < size; i++) {
         out[0][i] = instance->processAudio(in[0][i]); // format is in/out[channel][sample]
         out[1][i] = out[0][i];
       }
+      instance->blockEnd();
     }
 
     void start() {
