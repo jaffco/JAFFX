@@ -8,7 +8,7 @@ namespace Jaffx {
     static Program* instance; // Static pointer to the current instance of Program
 
     const int samplerate = 48000;
-    const int buffersize = 4;
+    const int buffersize = 128;
 
     // overridable init function
     inline virtual void init() {}

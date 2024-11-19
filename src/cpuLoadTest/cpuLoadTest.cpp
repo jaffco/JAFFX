@@ -22,6 +22,8 @@ void MyCallback(AudioHandle::InputBuffer in,
 int main(void)
 {
     hw.Init();
+    hw.SetAudioBlockSize(128);
+    hw.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ);
 
     // start logging to the serial connection
     hw.StartLog();
