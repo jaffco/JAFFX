@@ -1,5 +1,7 @@
 #include "../../Jaffx.hpp"
 
+// Program that implements Persistent Storage, allowing for the saving of presets between boot cycles
+
 // inspired by:
 // https://forum.electro-smith.com/t/saving-values-to-flash-memory-using-persistentstorage-class-on-daisy-pod/4306
 
@@ -15,15 +17,17 @@ struct Settings {
 struct SettingsTest : Jaffx::Program {
   bool ledState = false;
   bool triggered = false;
-	PersistentStorage<Settings> SavedSettings{this->hardware.qspi};
-	Settings DefaultSettings = {false};
-  
+	PersistentStorage<Settings> SavedSettings{this->hardware.qspi}; // PersistantStorage for Settings
+	Settings DefaultSettings = {false}; // local instance of Settings
+	
+	// Get stored settings and write to local
 	void loadSettings() {
 		// Reference to local copy of settings stored in flash
 		Settings &LocalSettings = this->SavedSettings.GetSettings();
 		this->ledState = LocalSettings.ledState; // update local var
 	}
 
+	// Get local settings and write to storage
 	void saveSettings() {
 		// Reference to local copy of settings stored in flash
 		Settings &LocalSettings = this->SavedSettings.GetSettings();
