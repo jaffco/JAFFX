@@ -1,6 +1,8 @@
 #include "../../Jaffx.hpp"
 #include "../../Gimmel/include/oscillator.hpp"
 
+// Basic program that implements an oscillator from Gimmel,
+// Our audio effects library
 struct Oscillator : Jaffx::Program {
   // add member objects
   giml::SinOsc<float> osc{samplerate};
