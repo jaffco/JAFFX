@@ -7,6 +7,7 @@ namespace Jaffx {
     static DaisySeed hardware;
     static Program* instance; // Static pointer to the current instance of Program
 
+    // It's handy to have these numbers on tap
     const int samplerate = 48000;
     const int buffersize = 128;
 
