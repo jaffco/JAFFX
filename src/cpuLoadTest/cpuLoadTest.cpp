@@ -40,7 +40,7 @@ int main(void)
         const float maxLoad = loadMeter.GetMaxCpuLoad();
         const float minLoad = loadMeter.GetMinCpuLoad();
         // print it to the serial connection (as percentages)
-        hw.PrintLine("Processing Load %:");
+        hw.PrintLine("Processing Load %%:");
         hw.PrintLine("Max: " FLT_FMT3, FLT_VAR3(maxLoad * 100.0f));
         hw.PrintLine("Avg: " FLT_FMT3, FLT_VAR3(avgLoad * 100.0f));
         hw.PrintLine("Min: " FLT_FMT3, FLT_VAR3(minLoad * 100.0f));
