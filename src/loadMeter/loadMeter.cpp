@@ -1,5 +1,7 @@
 #include "../../Jaffx.hpp"
 
+// CpuLoadMeter is essential for benchmarking our code
+// Great utility when debugging and/or optimizing
 struct LoadMeter : Jaffx::Program {
   CpuLoadMeter loadMeter;
 
@@ -20,6 +22,7 @@ struct LoadMeter : Jaffx::Program {
   }
 
   void loop() override {
+    // as seen in https://electro-smith.github.io/libDaisy/md_doc_2md_2__a3___getting-_started-_audio.html
     const float avgLoad = loadMeter.GetAvgCpuLoad();
     const float maxLoad = loadMeter.GetMaxCpuLoad();
     const float minLoad = loadMeter.GetMinCpuLoad();
