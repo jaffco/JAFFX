@@ -3,17 +3,27 @@
 // Simple blink program, the "Hello World!" of embedded systems
 struct Blink : Jaffx::Program {
   bool ledState = true;
+  bool trigger = false;
   unsigned int counter = 0;
 
   float processAudio(float in) override {
     counter++;
-    if (counter >= this->samplerate/2) { // every 0.5 seconds...
+    if (counter >= this->samplerate/2 && !trigger) { // every 0.5 seconds...
       counter = 0;
       ledState = !ledState; // flip LED state
-      this->hardware.SetLed(ledState); // To-Do: move to `loop()`
+      trigger = true;
     }
     return 0.f;
   }
+
+  void loop() override {
+    if (trigger) {
+      this->hardware.SetLed(ledState);
+      trigger = false;
+    }
+    System::Delay(500); // Don't spam the LED!
+  }
+
 };
 
 int main(void) {
