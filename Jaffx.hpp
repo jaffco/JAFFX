@@ -44,6 +44,7 @@ namespace Jaffx {
         hardware.PrintLine("Max: " FLT_FMT3 "%%", FLT_VAR3(maxLoad * 100.0f));
         hardware.PrintLine("Avg: " FLT_FMT3 "%%", FLT_VAR3(avgLoad * 100.0f));
         hardware.PrintLine("Min: " FLT_FMT3 "%%", FLT_VAR3(minLoad * 100.0f));
+        System::Delay(1000); // Don't spam the serial!
       }
     }
 
@@ -76,7 +77,7 @@ namespace Jaffx {
       hardware.StartAudio(AudioCallback);
 
       // loop indefinitely
-      while(1) {this->loop(); this->debugLoop(); System::Delay(1000);}
+      while(1) {this->loop(); this->debugLoop();}
     }
     
   };
