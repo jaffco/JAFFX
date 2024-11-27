@@ -7,7 +7,7 @@ struct GimmelTests : Jaffx::Program {
 	//giml::Tremolo<float> t{ this->samplerate };
 	std::unique_ptr<giml::Delay<float>> longDelay;
 	// giml::Reverb<float> r{this->samplerate, 4, 25, 4};
-	//giml::Delay<float> longDelay{ this->samplerate };
+	std::unique_ptr<giml::Detune<float>> detuneeee;
 	unsigned int counter = 0;
   	bool trigger = false;
 	// int* pInt, *pInt2;
@@ -22,6 +22,11 @@ struct GimmelTests : Jaffx::Program {
 
 		// r.setParams(0.02, 0.25, 0.5, 10, 0.5);
 		// r.enable();
+
+		detuneeee = std::make_unique<giml::Detune<float>>(this->samplerate);
+		detuneeee->setPitchRatio(2);
+		detuneeee->setWindowSize(25);
+		detuneeee->enable();
 
 		longDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
 		longDelay->setDelayTime(350);
@@ -47,7 +52,8 @@ struct GimmelTests : Jaffx::Program {
       trigger = true; // trigger a print
     }
 	
-		return longDelay->processSample(in);
+		// return longDelay->processSample(in);
+		return detuneeee->processSample(in);
 		// return r.processSample(in);
 		// return t->processSample(in);
 	}
