@@ -113,7 +113,7 @@ namespace Jaffx {
          * 
          * - Returns nullptr if requested size = 0 (with no space allocated for it)
          * 
-         * @param requestedSize - The number in bytes of how much data you want allocated in SDRAM
+         * @param requestedSize The number in bytes of how much data you want allocated in SDRAM
          * @return void* - Pointer to a contiguous array in SDRAM, or `nullptr` if errors
          */
         void* malloc(size_t requestedSize) {
@@ -191,6 +191,30 @@ namespace Jaffx {
             return nullptr;
         }
 
+        /**
+         * @brief acts just as stdlib::calloc with a couple of differences
+         * 
+         * - Returns nullptr if there is not enough space to malloc the requested size
+         * 
+         * - Returns nullptr if requested size = 0 (with no space allocated for it)
+         * 
+         * - For now, does not make initialization of memory any more efficient as it relies
+         *   on `memset` to zero-fill, maybe a future TODO to have the zero-ing done on the
+         *   hardware side
+         * 
+         * @param numElements Number of elements in the array
+         * @param size Size of each element
+         * @return void* - Pointer to a contiguous array in SDRAM, or `nullptr` if errors
+         */
+        void* calloc(size_t numElements, size_t size) {
+            size_t arrSizeInBytes = numElements * size;
+            void* returnVal = MyMalloc::malloc(arrSizeInBytes);
+            if (returnVal) {
+                //This means the `malloc` successfully worked, we just need to zero-fill the entire buffer now
+                ::memset(returnVal, 0, arrSizeInBytes);
+            }
+            return returnVal; //Either way we either return nullptr or a successful buffer
+        }
     private:
         /**
          * @brief Private helper function dedicated to coalescing all the free spaces one at a time; meant to be

@@ -18,10 +18,10 @@ struct GimmelTests : Jaffx::Program {
 			pInt[i] = 2 * i;
 		}
 		m.free(pInt);
-		pInt2 = (int*)m.malloc(sizeof(int) * 5);
-		for (int i = 0; i < 5; i++) {
-			pInt2[i] = 5 * i;
-		}
+		pInt2 = (int*)m.calloc(5, sizeof(int));
+		// for (int i = 0; i < 5; i++) {
+		// 	pInt2[i] = 5 * i;
+		// }
 	}
 
 	float processAudio(float in) override {
