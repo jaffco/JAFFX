@@ -2,12 +2,25 @@
 #include "JaffMalloc.hpp"
 using namespace daisy;
 
+//Overwrite stdlib calls in global space
+Jaffx::MyMalloc m;
+void* malloc(size_t size) {
+	return m.malloc(size);
+}
+
+void* calloc(size_t nelemb, size_t size) {
+	return m.calloc(nelemb, size);
+}
+
+void free(void* ptr) {
+	m.free(ptr);
+}
+
 namespace Jaffx {
 	struct Program {
 		// declare an instance of the hardware
 		static DaisySeed hardware;
 		static Program* instance; // Static pointer to the current instance of Program
-		MyMalloc m;
 
 		// It's handy to have these numbers on tap
 		const int samplerate = 48000;
@@ -95,8 +108,5 @@ namespace Jaffx {
 	// Global instancing of static members
 	DaisySeed Program::hardware; 
 	Program* Program::instance = nullptr;
-	
-	// void* malloc(size_t size) {
-	// 	return m.myMalloc()
-	// }
+
 } // namespace Jaffx
