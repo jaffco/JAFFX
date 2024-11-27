@@ -15,11 +15,11 @@ namespace Jaffx {
         Source: https://stackoverflow.com/questions/1008019/how-do-you-implement-the-singleton-design-pattern
         */
         
-    public:
-        static MyMalloc& getInstance() {
-            static MyMalloc instance;
-            return instance;
-        }
+    // public:
+    //     static MyMalloc& getInstance() {
+    //         static MyMalloc instance;
+    //         return instance;
+    //     }
     private:
         byte* pBackingMemory = (byte*)DAISY_SDRAM_BASE_ADDR;
 
@@ -27,15 +27,16 @@ namespace Jaffx {
         typedef struct metadata_stc {
             struct MyMalloc::metadata_stc* next;
             struct MyMalloc::metadata_stc* prev;
-            int size;
+            unsigned int size;
             bool allocatedOrNot;
             byte* buffer;
         } metadata;
         
         MyMalloc::metadata* freeSectionsListHeadPointer;
-        
-        //Private constructor
-        MyMalloc() {
+    public:
+        MyMalloc() {}
+        //constructor
+        void MyMallocInit() {
             //Actually initialize the 24-byte struct at the beginning - careful as this might segfault later when `initialStruct` goes out of scope
             MyMalloc::metadata initialStruct;
             initialStruct.next = nullptr;
@@ -47,7 +48,7 @@ namespace Jaffx {
             // Putting initial struct into start of BigBuffer so it is accessible outside this scope and we can avoid segfaults
             storeMetadataStructInBigBuffer(this->pBackingMemory, initialStruct); 
 
-            freeSectionsListHeadPointer = (metadata*)&(this->pBackingMemory[0]);
+            this->freeSectionsListHeadPointer = (metadata*)&(this->pBackingMemory[0]);
         }
     public: //deleted functions should be online
         //Have the copy and copy-assignment constructors be disabled so that our singleton can remain as the only instance
@@ -83,7 +84,7 @@ namespace Jaffx {
                 //TODO: Alert or maybe serial print somehow
                 return;
             }
-            metadata* pMetadataStruct = (metadata*) pBufferPos;
+            MyMalloc::metadata* pMetadataStruct = (MyMalloc::metadata*) pBufferPos;
             *pMetadataStruct = inputMetadata; 
         }
 
@@ -118,7 +119,7 @@ namespace Jaffx {
         void* malloc(size_t requestedSize) {
             if (requestedSize <= 0) return nullptr; //Safety check
             //If their requested size is not already divisible by 8, make it so
-            int actualSize = (requestedSize % 8) ? 8 - (requestedSize % 8) + requestedSize : requestedSize; //Rounds up to nearest multiple of 8
+            unsigned int actualSize = (requestedSize % 8) ? 8 - (requestedSize % 8) + requestedSize : requestedSize; //Rounds up to nearest multiple of 8
             if (actualSize == 0) return nullptr;
             
             //Loop through all the values in the list of "free" sections and find the first one that has enough room

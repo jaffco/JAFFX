@@ -1,4 +1,5 @@
 #include "libDaisy/src/daisy_seed.h"
+#include "JaffMalloc.hpp"
 using namespace daisy;
 
 namespace Jaffx {
@@ -6,6 +7,7 @@ namespace Jaffx {
 		// declare an instance of the hardware
 		static DaisySeed hardware;
 		static Program* instance; // Static pointer to the current instance of Program
+		MyMalloc m;
 
 		// It's handy to have these numbers on tap
 		const int samplerate = 48000;
@@ -74,6 +76,8 @@ namespace Jaffx {
 			hardware.SetAudioBlockSize(buffersize); // number of samples handled per callback (buffer size)
 			hardware.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ); // sample rate
 
+			m.MyMallocInit(); //Needs to be called AFTER hardware init, and not in the object's constructor
+
 			// init instance and start callback
 			instance = this;
 			this->init();
@@ -91,4 +95,8 @@ namespace Jaffx {
 	// Global instancing of static members
 	DaisySeed Program::hardware; 
 	Program* Program::instance = nullptr;
+	
+	// void* malloc(size_t size) {
+	// 	return m.myMalloc()
+	// }
 } // namespace Jaffx
