@@ -1,3 +1,4 @@
+#include <cstring>
 namespace Jaffx {
     //Taken from https://electro-smith.github.io/libDaisy/md_doc_2md_2__a6___getting-_started-_external-_s_d_r_a_m.html
     #ifndef DAISY_SDRAM_BASE_ADDR
@@ -116,10 +117,15 @@ namespace Jaffx {
          * @param requestedSize The number in bytes of how much data you want allocated in SDRAM
          * @return void* - Pointer to a contiguous array in SDRAM, or `nullptr` if errors
          */
+        
+        unsigned int round8Align(unsigned int a) {
+            return (a % 8) ? 8 - (a % 8) + a : a; //Rounds up to nearest multiple of 8
+        }
+
         void* malloc(size_t requestedSize) {
             if (requestedSize <= 0) return nullptr; //Safety check
             //If their requested size is not already divisible by 8, make it so
-            unsigned int actualSize = (requestedSize % 8) ? 8 - (requestedSize % 8) + requestedSize : requestedSize; //Rounds up to nearest multiple of 8
+            unsigned int actualSize = this->round8Align(requestedSize);
             if (actualSize == 0) return nullptr;
             
             //Loop through all the values in the list of "free" sections and find the first one that has enough room
@@ -215,6 +221,129 @@ namespace Jaffx {
             }
             return returnVal; //Either way we either return nullptr or a successful buffer
         }
+
+        /**
+         * @brief acts just as stdlib::realloc with a couple of differences
+         * 
+         * - Frees array and returns nullptr if requested size = 0
+         * 
+         * - `malloc()`s a new array of `size` if `ptr` is `nullptr`
+         * 
+         * @param ptr 
+         * @param size 
+         * @return void* 
+         */
+        void* realloc(void* ptr, size_t size) {
+            if (size == 0) {
+                this->free(ptr);
+                return nullptr;
+            }
+
+            if (!ptr) {
+                return this->malloc(size);
+            }
+
+            // Retrieve metadata of the current block
+            MyMalloc::metadata* pCurrentMetadata = (MyMalloc::metadata*)((byte*)ptr - sizeof(MyMalloc::metadata));
+            MyMalloc::metadata currentMetadata = this->getMetadataStructInBigBuffer((byte*)pCurrentMetadata);
+
+            if (size <= currentMetadata.size) { // If new size is smaller or equal to current size, truncate the block
+                unsigned int adjustedNewSize = this->round8Align(size);
+                if (adjustedNewSize < currentMetadata.size) {
+                    unsigned int remainingSize = currentMetadata.size - adjustedNewSize - sizeof(MyMalloc::metadata);
+
+                    if (remainingSize >= sizeof(MyMalloc::metadata)) {
+                        // Create a new free block with the remaining space
+                        MyMalloc::metadata newFreeBlock;
+                        newFreeBlock.size = remainingSize;
+                        newFreeBlock.next = nullptr;
+                        newFreeBlock.prev = nullptr;
+                        newFreeBlock.allocatedOrNot = false;
+                        newFreeBlock.buffer = pCurrentMetadata->buffer + adjustedNewSize + sizeof(MyMalloc::metadata);
+
+                        MyMalloc::metadata* pNewFreeBlock = (MyMalloc::metadata*)(newFreeBlock.buffer - sizeof(MyMalloc::metadata));
+                        this->storeMetadataStructInBigBuffer((byte*)pNewFreeBlock, newFreeBlock);
+
+                        // Add the new free block to the free list
+                        this->free(pNewFreeBlock->buffer);
+                    } //If not, we'll just keep it as is with the extra room
+
+                    // Update the current block's metadata
+                    currentMetadata.size = adjustedNewSize;
+                    this->storeMetadataStructInBigBuffer((byte*)pCurrentMetadata, currentMetadata);
+                } //else that means that we are perfect size and/or rounding errors in which case we shouldn't truncate and just return the OG ptr anyways
+                return ptr; //Just return the original value because we didn't move anything, we just trimmed
+            }
+            else { //They are requesting more space (probably the more frequent use-case)
+                unsigned int additionalRequiredSize = this->round8Align(size - currentMetadata.size);
+                //First we search for the next forward-adjacent free block
+                //We are guaranteed by correctness that the next address after this allocated section represents a valid metadata obj if it falls within the bounds of our SDRAM
+                MyMalloc::metadata* pNextForwardAdjacentMetadata = (MyMalloc::metadata*)((byte*)ptr + currentMetadata.size);
+                if (this->pointerInMemoryRange((byte*)pNextForwardAdjacentMetadata) && !(pNextForwardAdjacentMetadata->allocatedOrNot)) {
+                    //Then the forward-adjacent block is free and we can either split it or hijack it entirely
+                    unsigned int totalAvailableSizeInAdjFreeBlock = pNextForwardAdjacentMetadata->size + sizeof(MyMalloc::metadata);
+                    if (totalAvailableSizeInAdjFreeBlock >= additionalRequiredSize) {
+                        //This means we will be able to stretch our current allocation
+                        if (totalAvailableSizeInAdjFreeBlock >= additionalRequiredSize + sizeof(MyMalloc::metadata)) {
+                            //This means we can fit the entire 8-aligned extra space and still fit a free block (we'll call coalesce)
+                            // Split the forward-adjacent block
+                            MyMalloc::metadata newFreeBlock;
+                            newFreeBlock.size = totalAvailableSizeInAdjFreeBlock - additionalRequiredSize - sizeof(MyMalloc::metadata); // Remaining space after split
+                            newFreeBlock.next = pNextForwardAdjacentMetadata->next;
+                            newFreeBlock.prev = pCurrentMetadata;
+                            newFreeBlock.allocatedOrNot = false;
+                            newFreeBlock.buffer = pNextForwardAdjacentMetadata->buffer + additionalRequiredSize + sizeof(MyMalloc::metadata);
+
+                            // Update the current block metadata
+                            currentMetadata.size += additionalRequiredSize;
+                            currentMetadata.next = (MyMalloc::metadata*)((byte*)newFreeBlock.buffer - sizeof(MyMalloc::metadata));
+                            this->storeMetadataStructInBigBuffer((byte*)pCurrentMetadata, currentMetadata);
+
+                            // Store the new free block metadata
+                            MyMalloc::metadata* pNewFreeBlock = (MyMalloc::metadata*)((byte*)newFreeBlock.buffer - sizeof(MyMalloc::metadata));
+                            this->storeMetadataStructInBigBuffer((byte*)pNewFreeBlock, newFreeBlock);
+
+                            // Update the linked list to include the new free block
+                            if (newFreeBlock.next) {
+                                newFreeBlock.next->prev = pNewFreeBlock;
+
+                                // // Save the updated next block metadata to SDRAM - not necessary since we are dealing with a pointer regardless
+                                // this->storeMetadataStructInBigBuffer((byte*)newFreeBlock.next, *(newFreeBlock.next));
+                            }
+                        }
+                        else {
+                            //We cannot fit the extra space AND a free block so we must hijack the entire space
+                            currentMetadata.size += totalAvailableSizeInAdjFreeBlock; // Expand the current block's size
+                            currentMetadata.next = pNextForwardAdjacentMetadata->next; // Skip over the next block we are about to replace
+                            // Update the linked list to remove the forward-adjacent block
+                            if (pNextForwardAdjacentMetadata->next) {
+                                pNextForwardAdjacentMetadata->next->prev = pCurrentMetadata;
+                            }
+                            this->storeMetadataStructInBigBuffer((byte*)pCurrentMetadata, currentMetadata); //Update the struct with the newest values in SDRAM   
+                        }
+                        return ptr; //Return the same pointer since we were able to increase the space without moving data
+                    }
+                }
+                //Then that means this is at the end of the line, we cannot increase the size and must attempt to re-malloc to a new place
+                //TODO: Maybe add backwards check for better memory efficiency and lesser fragmentation
+
+                //If we cannot find enough room for the expansion in a forward-adjacent free block, we need to search else where
+
+                void* newBuffer = this->malloc(size);
+                if (!newBuffer) {
+                    return nullptr; // Allocation failed
+                }
+
+                // Copy existing data to the new block
+                ::memcpy(newBuffer, ptr, currentMetadata.size);
+
+                // Free the old block
+                this->free(ptr);
+                return newBuffer;
+            }
+
+
+        }
     private:
         /**
          * @brief Private helper function dedicated to coalescing all the free spaces one at a time; meant to be
@@ -265,6 +394,9 @@ namespace Jaffx {
          * @param pBuffer Pointer to the data you want freed, previously allocated by `malloc`/`calloc`/`realloc`
          */
         void free(void* pBuffer) {
+            if (!pBuffer) { // In case they try passing in zero or nullptr
+                return;
+            }
             MyMalloc::metadata* pMetadataToFree = (MyMalloc::metadata*)((byte*)pBuffer - sizeof(MyMalloc::metadata));
             MyMalloc::metadata metadataToFree = this->getMetadataStructInBigBuffer((byte*)pMetadataToFree);
             //If it is already freed, don't do anything else
