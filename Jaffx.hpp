@@ -12,6 +12,10 @@ void* calloc(size_t nelemb, size_t size) {
 	return m.calloc(nelemb, size);
 }
 
+void *realloc(void *ptr, size_t size) {
+	return m.realloc(ptr, size);
+}
+
 void free(void* ptr) {
 	m.free(ptr);
 }
