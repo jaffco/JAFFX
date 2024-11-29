@@ -2,23 +2,49 @@
 #include "JaffMalloc.hpp"
 using namespace daisy;
 
-//Overwrite stdlib calls in global space
+
 Jaffx::MyMalloc m;
-void* malloc(size_t size) {
-	return m.malloc(size);
+namespace giml {
+	//Overwrite stdlib calls in giml space
+	void* malloc(size_t size) {
+		//std::cout << "MyMalloc" << std::endl;
+		return m.malloc(size);
+	}
+
+	void* calloc(size_t nelemb, size_t size) {
+		//std::cout << "MyCalloc" << std::endl;
+		return m.calloc(nelemb, size);
+	}
+
+	void* realloc(void* ptr, size_t size) {
+		//std::cout << "MyRealloc" << std::endl;
+		return m.realloc(ptr, size);
+	}
+
+	void free(void* ptr) {
+		//std::cout << "MyFree" << std::endl;
+		m.free(ptr);
+	}
 }
 
-void* calloc(size_t nelemb, size_t size) {
-	return m.calloc(nelemb, size);
-}
 
-void *realloc(void *ptr, size_t size) {
-	return m.realloc(ptr, size);
-}
+// //Overwrite stdlib calls in global space
+// Jaffx::MyMalloc m;
+// void* malloc(size_t size) {
+// 	return m.malloc(size);
+// }
 
-void free(void* ptr) {
-	m.free(ptr);
-}
+// void* calloc(size_t nelemb, size_t size) {
+// 	return m.calloc(nelemb, size);
+// }
+
+// void *realloc(void *ptr, size_t size) {
+// 	return m.realloc(ptr, size);
+// }
+
+// void free(void* ptr) {
+// 	m.free(ptr);
+// }
 
 namespace Jaffx {
 	struct Program {

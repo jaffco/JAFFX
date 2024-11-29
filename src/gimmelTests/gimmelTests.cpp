@@ -8,6 +8,7 @@ struct GimmelTests : Jaffx::Program {
 	std::unique_ptr<giml::Delay<float>> longDelay;
 	// giml::Reverb<float> r{this->samplerate, 4, 25, 4};
 	std::unique_ptr<giml::Detune<float>> detuneeee;
+	std::unique_ptr<giml::Reverb<float>> r;
 	unsigned int counter = 0;
   	bool trigger = false;
 	// int* pInt, *pInt2;
@@ -20,20 +21,21 @@ struct GimmelTests : Jaffx::Program {
 		t->setDepth(0.75f);
 		t->enable();
 
-		// r.setParams(0.02, 0.25, 0.5, 10, 0.5);
-		// r.enable();
+		r = std::make_unique<giml::Reverb<float>>(this->samplerate);
+		r->setParams(0.02, 0.25, 0.5, 10, 0.5, giml::Reverb<float>::RoomType::SPHERE);
+		r->enable();
 
-		detuneeee = std::make_unique<giml::Detune<float>>(this->samplerate);
-		detuneeee->setPitchRatio(2);
-		detuneeee->setWindowSize(25);
-		detuneeee->enable();
+		// detuneeee = std::make_unique<giml::Detune<float>>(this->samplerate);
+		// detuneeee->setPitchRatio(2);
+		// detuneeee->setWindowSize(25);
+		// detuneeee->enable();
 
-		longDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
-		longDelay->setDelayTime(350);
-		longDelay->setFeedback(0.2);
-		longDelay->setBlend(0.35);
-		longDelay->setDamping(0.7);
-		longDelay->enable();
+		// longDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
+		// longDelay->setDelayTime(350);
+		// longDelay->setFeedback(0.2);
+		// longDelay->setBlend(0.35);
+		// longDelay->setDamping(0.7);
+		// longDelay->enable();
 		// pInt = (int*)m.malloc(sizeof(int) * 5);
 		// for (int i = 0; i < 5; i++) {
 		// 	pInt[i] = 2 * i;
@@ -53,9 +55,9 @@ struct GimmelTests : Jaffx::Program {
     }
 	
 		// return longDelay->processSample(in);
-		return detuneeee->processSample(in);
-		// return r.processSample(in);
-		// return t->processSample(in);
+		//return detuneeee->processSample(in);
+		return r->processSample(in)*(0.25) + in*(1-0.25);
+		//return t->processSample(in);
 	}
 
 	void loop() override {
