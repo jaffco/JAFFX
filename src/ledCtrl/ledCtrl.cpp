@@ -5,18 +5,31 @@
 // TODO: investigate flickering when LED is set < 1
 struct LedCtrl : Jaffx::Program {
   Led mLed;
+  bool flag = false;
   float phase;
 
   void init() override {
-    mLed.Init(seed::D16, false, samplerate);
+    mLed.Init(seed::D16, false, samplerate/buffersize);
   }
 
   float processAudio(float in) override {
     phase += 0.2f / samplerate; // 0.2 Hz
     phase -= floor(phase);
     mLed.Set(phase);
-    mLed.Update();
     return in;
+  }
+
+  void blockEnd() override {
+    if (!flag) {
+      flag = true;
+    }
+  }
+
+  void loop() override {
+    if (flag) {
+      mLed.Update();
+      flag = false;
+    }
   }
 
 };
