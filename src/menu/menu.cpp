@@ -8,26 +8,48 @@
 // encoder B on pin A4
 // encoder btn on pin A5
 
-struct Menu : Jaffx::Program {
+struct MenuManager {
   bool editMode = false; // encoder press
   int select = 0; // selector
   GPIO leds[3];
   Encoder mEncoder;
 
-  void init() override {
+  void init() {
     leds[0].Init(seed::D15, GPIO::Mode::OUTPUT); // init led1
     leds[1].Init(seed::D16, GPIO::Mode::OUTPUT); // init led2
     leds[2].Init(seed::D17, GPIO::Mode::OUTPUT); // init led3
     mEncoder.Init(seed::A3, seed::A4, seed::A5); // init encoder
+  }
+
+  void processInput() {
+    mEncoder.Debounce();
+    if (mEncoder.RisingEdge()) {editMode = !editMode;} // flip state
+    if (editMode) { // if edit mode
+      select = (select + 3 + mEncoder.Increment()) % 3; 
+    } // ^process selector with modulus logic
+  }
+
+  void processOutput() {
+    for (int i = 0; i < 3; i++) { // for each led
+      if (editMode) { // if editMode, light selected
+        if (i == select && !leds[i].Read()) {leds[i].Write(true);} 
+        else {leds[i].Write(false);}
+      } else {leds[i].Write(true);} // else, light all
+    }
+  }
+
+};
+
+struct Menu : Jaffx::Program {
+  MenuManager mMenuManager;
+
+  void init() override {
+    mMenuManager.init();
     hardware.StartLog();
   }
 
   void blockStart() override {
-    mEncoder.Debounce();
-    if (mEncoder.RisingEdge()) {editMode = !editMode;} // flip state
-    if (editMode) {
-      select = (select + 3 + mEncoder.Increment()) % 3;
-    }
+    mMenuManager.processInput();
   }
 
   bool trigger = false;
@@ -43,15 +65,10 @@ struct Menu : Jaffx::Program {
 
   void loop() override {
 
-    for (int i = 0; i < 3; i++) {
-      if (editMode) {
-        if (i == select && !leds[i].Read()) {leds[i].Write(true);} 
-        else {leds[i].Write(false);}
-      } else {leds[i].Write(true);}
-    }
+    mMenuManager.processOutput();
 
     if (trigger) {
-      hardware.PrintLine("Select: %d", select);
+      hardware.PrintLine("Select: %d", mMenuManager.select);
       trigger = false;
     }
 
