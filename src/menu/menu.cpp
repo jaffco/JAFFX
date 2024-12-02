@@ -21,6 +21,7 @@ struct MenuManager {
 
   void init() {
     for (auto &t : toggles) {t = true;} // init all toggles true for now
+    for (auto & p: params) {p = 0.f;} // init all params 0.f for now
     leds[0].Init(seed::D14, GPIO::Mode::OUTPUT); // init led1
     leds[1].Init(seed::D13, GPIO::Mode::OUTPUT); // init led2
     leds[2].Init(seed::D12, GPIO::Mode::OUTPUT); // init led3
