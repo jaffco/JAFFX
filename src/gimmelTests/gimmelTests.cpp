@@ -2,82 +2,48 @@
 #include "../../Gimmel/include/gimmel.hpp"
 #include <memory>
 
+// Testing ground for Gimmel effects
+// Biquad: working!
+// Chorus: working!
+// Compressor: working!
+// Delay: working!
+// Detune: working!
+// Reverb: works... but fragile
+// Tremolo: working!
+
 struct GimmelTests : Jaffx::Program {
-	std::unique_ptr<giml::Tremolo<float>> t;
-	//giml::Tremolo<float> t{ this->samplerate };
-	std::unique_ptr<giml::Delay<float>> longDelay;
-	// giml::Reverb<float> r{this->samplerate, 4, 25, 4};
-	std::unique_ptr<giml::Detune<float>> detuneeee;
-	std::unique_ptr<giml::Reverb<float>> r;
-	unsigned int counter = 0;
-  	bool trigger = false;
-	// int* pInt, *pInt2;
-	
+	std::unique_ptr<giml::Biquad<float>> mBiquad;
+	std::unique_ptr<giml::Chorus<float>> mChorus;
+	std::unique_ptr<giml::Compressor<float>> mCompressor;
+	std::unique_ptr<giml::Delay<float>> mDelay;
+	std::unique_ptr<giml::Detune<float>> mDetune;
+	std::unique_ptr<giml::Reverb<float>> mReverb;
+	std::unique_ptr<giml::Tremolo<float>> mTremolo;
 	
 	void init() override {
-		hardware.StartLog();
-		t = std::make_unique<giml::Tremolo<float>>(this->samplerate);
-		t->setSpeed(150);
-		t->setDepth(0.75f);
-		t->enable();
+		mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
+		mReverb->setParams(0.02f, 0.2f, 0.5f, 10.f, 0.9f);
+		mReverb->enable();
 
-		r = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		r->setParams(0.02, 0.25, 0.5, 10, 0.5, giml::Reverb<float>::RoomType::SPHERE);
-		r->enable();
-
-		// detuneeee = std::make_unique<giml::Detune<float>>(this->samplerate);
-		// detuneeee->setPitchRatio(2);
-		// detuneeee->setWindowSize(25);
-		// detuneeee->enable();
-
-		// longDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
-		// longDelay->setDelayTime(350);
-		// longDelay->setFeedback(0.2);
-		// longDelay->setBlend(0.35);
-		// longDelay->setDamping(0.7);
-		// longDelay->enable();
-		// pInt = (int*)m.malloc(sizeof(int) * 5);
-		// for (int i = 0; i < 5; i++) {
-		// 	pInt[i] = 2 * i;
-		// }
-		// m.free(pInt);
-		// pInt2 = (int*)m.calloc(5, sizeof(int));
-		// for (int i = 0; i < 5; i++) {
-		// 	pInt2[i] = 5 * i;
-		// }
+		mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
+		mCompressor->setAttack(3.5f);
+		mCompressor->setKnee(4.f);
+		mCompressor->setMakeupGain(20.f);
+		mCompressor->setRatio(14.f);
+		mCompressor->setRelease(100.f);
+		mCompressor->setThresh(-35.f);
+		mCompressor->enable();
 	}
 
 	float processAudio(float in) override {
-		counter++;
-    if (counter >= this->samplerate * 5 && !trigger) { // once per second
-      counter = 0;
-      trigger = true; // trigger a print
-    }
-	
-		// return longDelay->processSample(in);
-		//return detuneeee->processSample(in);
-		return r->processSample(in)*(0.25) + in*(1-0.25);
-		//return t->processSample(in);
+		float out = mReverb->processSample(in);
+		return mCompressor->processSample(giml::powMix<float>(in, out));
 	}
-
-	void loop() override {
-    if (trigger) { // print set by trigger
-      	// for (int j = 0; j < 5; j++) {
-		// 	hardware.PrintLine("1: %d \n", pInt[j]);
-		// 	hardware.PrintLine("2: %d \n", pInt2[j]);
-		// 	//hardware.PrintLine("hello\n");
-		// }
-      trigger = false;
-    }
-    System::Delay(500); // Don't spam the serial!
-  }
 
 };
 
 int main() {
-  GimmelTests g;
-  g.start();
+  GimmelTests mGimmelTests;
+  mGimmelTests.start();
   return 0;
 }
-
-
