@@ -13,7 +13,7 @@ What does main need?
 
 What does it need to do these things?
 
-- Modified Makefile []
+- Modified Makefile [x]
 - `Settings` struct [x]
 - `MenuManager` struct [x]
 - parameterizable giml effects []
@@ -28,7 +28,7 @@ What does it need to do these things?
  * struct has changed
  */
 struct Settings {
-  bool toggles[5]; // switches
+  bool toggles[5] = {false, false, false, false, false}; // switches
   float params[5][3]; // params
 
   // Overloading the != operator
@@ -95,9 +95,9 @@ struct MenuManager {
     mEncoder.Debounce();
     for (auto& s : switches) {s.Debounce();}
     
-    // check encoder1 for edit mode
+    // check encoder1 for edit mode. `RisingEdge()` triggers at boot, `FallingEdge()` preferred
     //if (encoders[0].RisingEdge()) {editMode = !editMode;} // flip state
-    if (mEncoder.RisingEdge()) {editMode = !editMode;} // flip state
+    if (mEncoder.FallingEdge()) {editMode = !editMode;} // flip state
 
     // if editmode, process selector and param knobs
     if (editMode) { 
@@ -144,7 +144,7 @@ struct Main : Jaffx::Program {
   std::unique_ptr<giml::Compressor<float>> mCompressor;
   std::unique_ptr<giml::Reverb<float>> mReverb;
   
-	
+
 	// Get stored settings and write to local
 	void loadSettings() {mSettings = savedSettings.GetSettings();}
 
@@ -155,33 +155,30 @@ struct Main : Jaffx::Program {
 	}
 
   void init() override {
+    hardware.StartLog();
     savedSettings.Init(mSettings);
     loadSettings();
     mMenuManager.init(mSettings);
-    mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		//mReverb->setParams(0.03f, 0.2f, 0.5f, 50.f, 0.9f);
-    mReverb->setParams(0.02f, 0.2f, 0.5f, 10.f, 0.9f);
-		mReverb->enable();
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
 		mDetune->setPitchRatio(0.995);
-		mDetune->enable();
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
 		mDelay->setDelayTime(398.f);
     mDelay->setDamping(0.7f);
-    mDelay->setFeedback(0.3f);
+    mDelay->setFeedback(0.2f);
     mDelay->setBlend(1.f);
-		mDelay->enable();
 
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
 		mCompressor->setAttack(3.5f);
     mCompressor->setKnee(5.f);
-    mCompressor->setMakeupGain(15.f);
+    mCompressor->setMakeupGain(10.f);
     mCompressor->setRatio(4.f);
     mCompressor->setRelease(100.f);
     mCompressor->setThresh(-20.f);
-		mCompressor->enable();
+
+    mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
+		mReverb->setParams(0.03f, 0.2f, 0.5f, 50.f, 0.9f);
   }
 
   /**
@@ -191,12 +188,24 @@ struct Main : Jaffx::Program {
   void blockStart() override {
     Program::blockStart(); // for debug mode
     mMenuManager.processInput();
+    mDetune->toggle(mSettings.toggles[0]);
+    mDelay->toggle(mSettings.toggles[1]);
+    mCompressor->toggle(mSettings.toggles[2]);
+    mReverb->toggle(mSettings.toggles[3]);
   }
 
+  bool trigger = false;
+  int counter = 0;
   /**
-   * @todo implement DSP
+   * @todo implement toggles
    */
   float processAudio(float in) override {
+    counter++;
+    if (counter >= samplerate && !trigger) {
+      counter = 0;
+      trigger = true;
+    }
+
     float y_x = giml::powMix(in, mDelay->processSample(mDetune->processSample(in)));
     y_x = mCompressor->processSample(y_x);
     y_x = giml::powMix(y_x, mReverb->processSample(y_x));
@@ -204,11 +213,16 @@ struct Main : Jaffx::Program {
   }
   
   /**
-   * @todo add `System::Delay`?
+   * @todo move save logic to when `editMode` is exited
    */
   void loop() override {
     System::Delay(10);
     mMenuManager.processOutput();
+    if (trigger) {
+      saveSettings();
+      hardware.PrintLine("Saved!");
+      trigger = false;
+    }
   }
 
 };

@@ -2,7 +2,7 @@
 TARGET = main
 
 # Set App Type
-# APP_TYPE = BOOT_SRAM
+APP_TYPE = BOOT_SRAM
 
 # Sources
 CPP_SOURCES = main.cpp
