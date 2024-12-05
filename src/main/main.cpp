@@ -15,7 +15,7 @@ What does it need to do these things?
 
 - Modified Makefile [x]
 - `Settings` struct [x]
-- `MenuManager` struct [x]
+- `InterfaceManager` struct [x]
 - parameterizable giml effects []
 
 */
@@ -145,8 +145,6 @@ struct InterfaceManager {
 
 /**
  * @brief firmware for the Jaffx pedal
- * 
- * @todo encapsulate `PersistentStorage` functions- best done in `InterfaceManager` or dedicated struct?
  * @todo implement params
  * @todo improve DSP
  */
@@ -159,24 +157,23 @@ struct Main : Jaffx::Program {
   std::unique_ptr<giml::Compressor<float>> mCompressor;
   std::unique_ptr<giml::Reverb<float>> mReverb;
   //giml::Effect<float>* fxChain[4] = {nullptr, nullptr, nullptr, nullptr};
-  
+
 
   void init() override {
     hardware.StartLog();
     mPersistentStorage.Init(mSettings);
-    //loadSettings();
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
 		mDetune->setPitchRatio(0.995);
-    //fxChain[0] = mDetune.get();
+    // fxChain[0] = mDetune.get();
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
 		mDelay->setDelayTime(398.f);
     mDelay->setDamping(0.7f);
     mDelay->setFeedback(0.2f);
     mDelay->setBlend(1.f);
-    //fxChain[1] = mDelay.get();
+    // fxChain[1] = mDelay.get();
 
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
 		mCompressor->setAttack(3.5f);
@@ -185,11 +182,11 @@ struct Main : Jaffx::Program {
     mCompressor->setRatio(4.f);
     mCompressor->setRelease(100.f);
     mCompressor->setThresh(-20.f);
-    //fxChain[2] = mCompressor.get();
+    // fxChain[2] = mCompressor.get();
 
     mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
 		mReverb->setParams(0.03f, 0.2f, 0.5f, 50.f, 0.9f);
-    //fxChain[3] = mReverb.get();
+    // fxChain[3] = mReverb.get();
   }
 
   /**
@@ -213,15 +210,16 @@ struct Main : Jaffx::Program {
    * @todo containerize effects
    */
   float processAudio(float in) override {
-    float out = giml::powMix(in, mDelay->processSample(mDetune->processSample(in)));
+    float out = in;
+    out = giml::powMix(in, mDelay->processSample(mDetune->processSample(in)));
     out = mCompressor->processSample(out);
     out = giml::powMix(out, mReverb->processSample(out));
-    //for (auto& effect : fxChain) {out = effect->processSample(out);} ??
+    // for (auto& effect : fxChain) {out = effect->processSample(out);}
     return out;
   }
   
   void loop() override {
-    System::Delay(10);
+    System::Delay(25); // what's a good value?
     mInterfaceManager.processOutput();
   }
 
