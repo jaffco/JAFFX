@@ -48,7 +48,7 @@ struct Settings {
 /**
  * @brief struct for managing the UI
  */
-struct MenuManager {
+struct InterfaceManager {
   bool editMode = false;
   int select = 0;
   static const int numEffects = 5;
@@ -56,9 +56,9 @@ struct MenuManager {
   GPIO leds[numEffects];
   Switch switches[numEffects];
   //Encoder encoders[numParams + 1];
-  //Encoder encoders[1]; // test
   Encoder mEncoder; // test
   Settings* localSettings = nullptr;
+  PersistentStorage<Settings>* savedSettings = nullptr;
 
   /**
    * @brief init function based on specific hardware setup
@@ -71,8 +71,13 @@ struct MenuManager {
    * 
    * @todo init rest of ctrls
    */
-  void init(Settings& initSettings) {
-    localSettings = &initSettings;
+  void init(Settings& local, PersistentStorage<Settings>& saved) {
+    // init settings
+    localSettings = &local;
+    savedSettings = &saved;
+    loadSettings();
+
+    // init ctrls
     switches[0].Init(seed::A6);
     switches[1].Init(seed::A7);
     switches[2].Init(seed::A8);
@@ -86,7 +91,6 @@ struct MenuManager {
     mEncoder.Init(seed::A0, seed::A1, seed::A2);
     //encoders[0].Init(seed::A0, seed::A1, seed::A2); // init encoder1
     //encoders[1].Init(seed::A3, seed::A4, seed::A5); // init encoder2
-    // init switches
   }
 
   void processInput() {
@@ -97,7 +101,10 @@ struct MenuManager {
     
     // check encoder1 for edit mode. `RisingEdge()` triggers at boot, `FallingEdge()` preferred
     //if (encoders[0].RisingEdge()) {editMode = !editMode;} // flip state
-    if (mEncoder.FallingEdge()) {editMode = !editMode;} // flip state
+    if (mEncoder.FallingEdge()) {
+      editMode = !editMode; // flip state
+      if (!editMode) {saveSettings();} // if exiting edit mode, save settings
+    } 
 
     // if editmode, process selector and param knobs
     if (editMode) { 
@@ -126,48 +133,50 @@ struct MenuManager {
     } // if !editMode, show toggle state^
   }
 
+  // Get stored settings and write to local
+	void loadSettings() {*localSettings = savedSettings->GetSettings();}
+
+  // Save local settings to persistent memory
+  void saveSettings() {
+    savedSettings->GetSettings() = *localSettings; 
+    savedSettings->Save(); // save to persistent memory
+  }
 };
 
 /**
  * @brief firmware for the Jaffx pedal
  * 
- * @todo encapsulate `PersistentStorage` functions
- * @todo implement UI
- * @todo implement DSP
+ * @todo encapsulate `PersistentStorage` functions- best done in `InterfaceManager` or dedicated struct?
+ * @todo implement params
+ * @todo improve DSP
  */
 struct Main : Jaffx::Program {
-  PersistentStorage<Settings> savedSettings{hardware.qspi}; // PersistentStorage for Settings
+  PersistentStorage<Settings> mPersistentStorage{hardware.qspi}; // PersistentStorage for Settings
 	Settings mSettings; // local settings 
-  MenuManager mMenuManager; 
+  InterfaceManager mInterfaceManager; 
   std::unique_ptr<giml::Detune<float>> mDetune;
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Compressor<float>> mCompressor;
   std::unique_ptr<giml::Reverb<float>> mReverb;
+  //giml::Effect<float>* fxChain[4] = {nullptr, nullptr, nullptr, nullptr};
   
-
-	// Get stored settings and write to local
-	void loadSettings() {mSettings = savedSettings.GetSettings();}
-
-	// Get local settings and write to storage
-	void saveSettings() {
-		savedSettings.GetSettings() = mSettings; 
-		savedSettings.Save(); // save to persistent memory 
-	}
 
   void init() override {
     hardware.StartLog();
-    savedSettings.Init(mSettings);
-    loadSettings();
-    mMenuManager.init(mSettings);
+    mPersistentStorage.Init(mSettings);
+    //loadSettings();
+    mInterfaceManager.init(mSettings, mPersistentStorage);
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
 		mDetune->setPitchRatio(0.995);
+    //fxChain[0] = mDetune.get();
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
 		mDelay->setDelayTime(398.f);
     mDelay->setDamping(0.7f);
     mDelay->setFeedback(0.2f);
     mDelay->setBlend(1.f);
+    //fxChain[1] = mDelay.get();
 
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
 		mCompressor->setAttack(3.5f);
@@ -176,53 +185,44 @@ struct Main : Jaffx::Program {
     mCompressor->setRatio(4.f);
     mCompressor->setRelease(100.f);
     mCompressor->setThresh(-20.f);
+    //fxChain[2] = mCompressor.get();
 
     mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
 		mReverb->setParams(0.03f, 0.2f, 0.5f, 50.f, 0.9f);
+    //fxChain[3] = mReverb.get();
   }
 
   /**
    * @todo check for change in `Settings` from MenuManager,
    * and call `saveSettings()` if changed
+   * 
+   * @todo `for` loop for toggles
+   * 
    */
   void blockStart() override {
     Program::blockStart(); // for debug mode
-    mMenuManager.processInput();
+    mInterfaceManager.processInput();
     mDetune->toggle(mSettings.toggles[0]);
     mDelay->toggle(mSettings.toggles[1]);
     mCompressor->toggle(mSettings.toggles[2]);
     mReverb->toggle(mSettings.toggles[3]);
   }
 
-  bool trigger = false;
-  int counter = 0;
   /**
-   * @todo implement toggles
+   * @todo implement params
+   * @todo containerize effects
    */
   float processAudio(float in) override {
-    counter++;
-    if (counter >= samplerate && !trigger) {
-      counter = 0;
-      trigger = true;
-    }
-
-    float y_x = giml::powMix(in, mDelay->processSample(mDetune->processSample(in)));
-    y_x = mCompressor->processSample(y_x);
-    y_x = giml::powMix(y_x, mReverb->processSample(y_x));
-    return y_x;
+    float out = giml::powMix(in, mDelay->processSample(mDetune->processSample(in)));
+    out = mCompressor->processSample(out);
+    out = giml::powMix(out, mReverb->processSample(out));
+    //for (auto& effect : fxChain) {out = effect->processSample(out);} ??
+    return out;
   }
   
-  /**
-   * @todo move save logic to when `editMode` is exited
-   */
   void loop() override {
     System::Delay(10);
-    mMenuManager.processOutput();
-    if (trigger) {
-      saveSettings();
-      hardware.PrintLine("Saved!");
-      trigger = false;
-    }
+    mInterfaceManager.processOutput();
   }
 
 };
