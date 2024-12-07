@@ -62,7 +62,7 @@ namespace Jaffx {
      */
     bool pointerInMemoryRange(byte* pBufferPos) {
       return ( (pBufferPos >= this->pBackingMemory) && 
-      (&(this->pBackingMemory[DAISY_SDRAM_SIZE]) > pBufferPos) );
+                (&(this->pBackingMemory[DAISY_SDRAM_SIZE]) > pBufferPos) );
     }
 
     /**
@@ -73,11 +73,9 @@ namespace Jaffx {
      * @param inputMetadata The struct to copy into the buffer
      */
     void storeMetadataStructInBigBuffer(byte* pBufferPos, metadata inputMetadata) {
-      //Check pointer bounds to ensure that the requested read pointer is within the BigBuffer
-      if (!pointerInMemoryRange(pBufferPos)) {
-        //TODO: Alert or maybe serial print somehow
-        return;
-      }
+      // Check pointer bounds to ensure that the requested read pointer is within the BigBuffer
+      // TODO: Alert or maybe serial print somehow
+      if (!pointerInMemoryRange(pBufferPos)) { return; }
       MyMalloc::metadata* pMetadataStruct = (MyMalloc::metadata*)pBufferPos;
       *pMetadataStruct = inputMetadata; 
     }
@@ -89,7 +87,7 @@ namespace Jaffx {
      * @return The `metadata` struct found at the given position in `BigBuffer`
      */
     MyMalloc::metadata getMetadataStructInBigBuffer(byte* pBufferPos) {
-      //Check pointer bounds to ensure that the requested read pointer is within the BigBuffer
+      // Check pointer bounds to ensure that the requested read pointer is within the BigBuffer
       if (!pointerInMemoryRange(pBufferPos)) {
         //TODO: Alert or maybe serial print somehow
         return *((MyMalloc::metadata*) nullptr); //TODO: This violently fails, maybe return an empty or destroyed one
@@ -146,12 +144,8 @@ namespace Jaffx {
           this->storeMetadataStructInBigBuffer((byte*)pBufferNewFreeStruct, newFreeStruct);
 
           // Adjusting pointers to point to new free space
-          if (freeStruct->next) {
-            (freeStruct->next)->prev = pBufferNewFreeStruct;
-          }
-          if (freeStruct->prev) {
-            (freeStruct->prev)->next = pBufferNewFreeStruct;
-          }
+          if (freeStruct->next) { (freeStruct->next)->prev = pBufferNewFreeStruct; }
+          if (freeStruct->prev) { (freeStruct->prev)->next = pBufferNewFreeStruct; }
           if (freeStruct == this->freeSectionsListHeadPointer) {
             this->freeSectionsListHeadPointer = pBufferNewFreeStruct;
           }
@@ -174,13 +168,8 @@ namespace Jaffx {
         if (freeStruct->size >= (actualSize)) {
 
           // remove this struct from free list because it has been "hijacked"
-          if (freeStruct->next) {
-            (freeStruct->next)->prev = freeStruct->prev;
-          }
-          if (freeStruct->prev) {
-            (freeStruct->prev)->next = freeStruct->next;
-          }
-
+          if (freeStruct->next) { (freeStruct->next)->prev = freeStruct->prev; }
+          if (freeStruct->prev) { (freeStruct->prev)->next = freeStruct->next; }
 
           // set next and prev pointers to NULL because block is no longer part of free list
           freeStruct->next = nullptr;
@@ -301,7 +290,7 @@ namespace Jaffx {
                 MyMalloc::metadata* pNewFreeBlock = (MyMalloc::metadata*)((byte*)newFreeBlock.buffer - sizeof(MyMalloc::metadata));
                 this->storeMetadataStructInBigBuffer((byte*)pNewFreeBlock, newFreeBlock);
 
-                //Now update the neighboring free blocks to point to this one instead of the old one
+                // Now update the neighboring free blocks to point to this one instead of the old one
                 if (pNewFreeBlock->prev) {
                   pNewFreeBlock->prev->next = pNewFreeBlock;
                 }
@@ -336,12 +325,10 @@ namespace Jaffx {
         //Then that means this is at the end of the line, we cannot increase the size and must attempt to re-malloc to a new place
         //TODO: Maybe add backwards check for better memory efficiency and lesser fragmentation
 
-        //If we cannot find enough room for the expansion in a forward-adjacent free block, 
+        // If we cannot find enough room for the expansion in a forward-adjacent free block, 
         // we need to search elsewhere
         void* newBuffer = this->malloc(size);
-        if (!newBuffer) {
-          return nullptr; // Allocation failed
-        }
+        if (!newBuffer) { return nullptr; } // Allocation failed
 
         // Copy existing data to the new block
         ::memcpy(newBuffer, ptr, currentMetadata.size);

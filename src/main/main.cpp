@@ -28,16 +28,16 @@ What does it need to do these things?
  * struct has changed
  */
 struct Settings {
-  bool toggles[5] = {false, false, false, false, false}; // switches
+  bool toggles[5] = { false, false, false, false, false }; // switches
   float params[5][3]; // params
 
   // Overloading the != operator
   // This is necessary as this operator is used in the PersistentStorage source code
   bool operator!=(const Settings& a) const {
     for (int i = 0; i < 5; i++) {
-      if (toggles[i] != a.toggles[i]) {return true;} // check toggles
+      if (toggles[i] != a.toggles[i]) { return true; } // check toggles
       for (int j = 0; j < 3; j++) { // check params
-        if (params[i][j] != a.params[i][j]) {return true;} 
+        if (params[i][j] != a.params[i][j]) { return true; } 
       }
     }
     return false; // No mismatches found
@@ -97,13 +97,13 @@ struct InterfaceManager {
     // debounce encoders and switches
     //for (auto& e : encoders) {e.Debounce();}
     mEncoder.Debounce();
-    for (auto& s : switches) {s.Debounce();}
+    for (auto& s : switches) { s.Debounce(); }
     
     // check encoder1 for edit mode. `RisingEdge()` triggers at boot, `FallingEdge()` preferred
     //if (encoders[0].RisingEdge()) {editMode = !editMode;} // flip state
     if (mEncoder.FallingEdge()) {
       editMode = !editMode; // flip state
-      if (!editMode) {saveSettings();} // if exiting edit mode, save settings
+      if (!editMode) { saveSettings(); } // if exiting edit mode, save settings
     } 
 
     // if editmode, process selector and param knobs
@@ -127,14 +127,14 @@ struct InterfaceManager {
   void processOutput() {
     for (int i = 0; i < numEffects; i++) { // for each led
       if (editMode) { // if editMode, light selected
-        if (i == select && !leds[i].Read()) {leds[i].Write(true);} 
-        else {leds[i].Write(false);}
-      } else {leds[i].Write(localSettings->toggles[i]);} 
-    } // if !editMode, show toggle state^
+        if (i == select && !leds[i].Read()) { leds[i].Write(true); } 
+        else { leds[i].Write(false); }
+      } else { leds[i].Write(localSettings->toggles[i]); } // if !editMode, show toggle state
+    } 
   }
 
   // Get stored settings and write to local
-	void loadSettings() {*localSettings = savedSettings->GetSettings();}
+	void loadSettings() { *localSettings = savedSettings->GetSettings(); }
 
   // Save local settings to persistent memory
   void saveSettings() {
@@ -149,9 +149,11 @@ struct InterfaceManager {
  * @todo improve DSP
  */
 struct Main : Jaffx::Program {
-  PersistentStorage<Settings> mPersistentStorage{hardware.qspi}; // PersistentStorage for Settings
+  PersistentStorage<Settings> mPersistentStorage{hardware.qspi}; // PersistentStorage for settings
 	Settings mSettings; // local settings 
   InterfaceManager mInterfaceManager; 
+
+  // effects 
   std::unique_ptr<giml::Detune<float>> mDetune;
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Compressor<float>> mCompressor;
@@ -190,11 +192,7 @@ struct Main : Jaffx::Program {
   }
 
   /**
-   * @todo check for change in `Settings` from MenuManager,
-   * and call `saveSettings()` if changed
-   * 
-   * @todo `for` loop for toggles
-   * 
+   * @todo `for` loop for toggles (depends on containerization for effects)
    */
   void blockStart() override {
     Program::blockStart(); // for debug mode
@@ -211,10 +209,10 @@ struct Main : Jaffx::Program {
    */
   float processAudio(float in) override {
     float out = in;
-    out = giml::powMix(in, mDelay->processSample(mDetune->processSample(in)));
+    out = giml::powMix(out, mDelay->processSample(mDetune->processSample(out)));
     out = mCompressor->processSample(out);
     out = giml::powMix(out, mReverb->processSample(out));
-    // for (auto& effect : fxChain) {out = effect->processSample(out);}
+    // for (auto& effect : fxChain) { out = effect->processSample(out); }
     return out;
   }
   
