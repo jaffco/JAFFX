@@ -55,21 +55,22 @@ struct InterfaceManager {
   static const int numParams = 3;
   GPIO leds[numEffects];
   Switch switches[numEffects];
-  //Encoder encoders[numParams + 1];
-  Encoder mEncoder; // test
+  Encoder encoders[numParams + 1];
   Settings* localSettings = nullptr;
   PersistentStorage<Settings>* savedSettings = nullptr;
 
   /**
    * @brief init function based on specific hardware setup
    * 
-   * Hardware setup 2024-12-03:
+   * Hardware setup 2024-12-08:
    * 
-   * switches on pins A6-A10
+   * switches 0-5 on pins D24-28
    * 
-   * leds on pins D14-10
+   * leds 0-5 on pins D14-10
    * 
-   * @todo init rest of ctrls
+   * encoder 0 on pins D15, D16, D17
+   * 
+   * encoders 1-3 on pins D18-22, D19-23, D17
    */
   void init(Settings& local, PersistentStorage<Settings>& saved) {
     // init settings
@@ -78,43 +79,43 @@ struct InterfaceManager {
     loadSettings();
 
     // init ctrls
-    switches[0].Init(seed::A6);
-    switches[1].Init(seed::A7);
-    switches[2].Init(seed::A8);
-    switches[3].Init(seed::A9);
-    switches[4].Init(seed::A10);
+    switches[0].Init(seed::D24);
+    switches[1].Init(seed::D25);
+    switches[2].Init(seed::D26);
+    switches[3].Init(seed::D27);
+    switches[4].Init(seed::D28);
     leds[0].Init(seed::D14, GPIO::Mode::OUTPUT);
     leds[1].Init(seed::D13, GPIO::Mode::OUTPUT);
     leds[2].Init(seed::D12, GPIO::Mode::OUTPUT);
     leds[3].Init(seed::D11, GPIO::Mode::OUTPUT); 
     leds[4].Init(seed::D10, GPIO::Mode::OUTPUT);  
-    mEncoder.Init(seed::A0, seed::A1, seed::A2);
-    //encoders[0].Init(seed::A0, seed::A1, seed::A2); // init encoder1
-    //encoders[1].Init(seed::A3, seed::A4, seed::A5); // init encoder2
+    encoders[0].Init(seed::D15, seed::D16, seed::D17);
+    encoders[1].Init(seed::D18, seed::D19, seed::D17);
+    encoders[2].Init(seed::D20, seed::D21, seed::D17);
+    encoders[3].Init(seed::D22, seed::D23, seed::D17);
   }
 
   void processInput() {
     // debounce encoders and switches
-    //for (auto& e : encoders) {e.Debounce();}
-    mEncoder.Debounce();
+    for (auto& e : encoders) { e.Debounce(); }
     for (auto& s : switches) { s.Debounce(); }
     
-    // check encoder1 for edit mode. `RisingEdge()` triggers at boot, `FallingEdge()` preferred
-    //if (encoders[0].RisingEdge()) {editMode = !editMode;} // flip state
-    if (mEncoder.FallingEdge()) {
+    // check encoder[0] for edit mode. 
+    // `RisingEdge()` triggers at boot, `FallingEdge()` preferred
+    if (encoders[0].FallingEdge()) {
       editMode = !editMode; // flip state
       if (!editMode) { saveSettings(); } // if exiting edit mode, save settings
     } 
 
     // if editmode, process selector and param knobs
     if (editMode) { 
-      select = (select + numEffects + mEncoder.Increment()) % numEffects;
+      select = (select + numEffects + encoders[0].Increment()) % numEffects;
       auto& selection = localSettings->params[select];
-      // for (int j = 0; j < numParams; j++) {
-      //   selection[j] += encoders[j + 1].Increment() * 0.01f;
-      //   selection[j] = giml::clip<float>(selection[j], 0.f, 1.f); 
-      //   // TODO: encapsulate clamping in a param class^
-      // }
+      for (int i = 0; i < numParams; i++) {
+        selection[i] += encoders[i + 1].Increment() * 0.05f;
+        selection[i] = giml::clip<float>(selection[i], 0.f, 1.f); 
+        // TODO: encapsulate clamping in a param class^
+      }
     } else { // if !editMode
       for (int i = 0; i < numEffects; i++) {
         if (switches[i].RisingEdge()) { // Toggle switches... Pressed() or RisingEdge()?
@@ -146,6 +147,7 @@ struct InterfaceManager {
 /**
  * @brief firmware for the Jaffx pedal
  * @todo implement params
+ * @todo containerize fx
  * @todo improve DSP
  */
 struct Main : Jaffx::Program {
@@ -158,7 +160,6 @@ struct Main : Jaffx::Program {
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Compressor<float>> mCompressor;
   std::unique_ptr<giml::Reverb<float>> mReverb;
-  //giml::Effect<float>* fxChain[4] = {nullptr, nullptr, nullptr, nullptr};
 
 
   void init() override {
@@ -168,14 +169,12 @@ struct Main : Jaffx::Program {
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
 		mDetune->setPitchRatio(0.995);
-    // fxChain[0] = mDetune.get();
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
 		mDelay->setDelayTime(398.f);
     mDelay->setDamping(0.7f);
     mDelay->setFeedback(0.2f);
     mDelay->setBlend(1.f);
-    // fxChain[1] = mDelay.get();
 
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
 		mCompressor->setAttack(3.5f);
@@ -184,11 +183,9 @@ struct Main : Jaffx::Program {
     mCompressor->setRatio(4.f);
     mCompressor->setRelease(100.f);
     mCompressor->setThresh(-20.f);
-    // fxChain[2] = mCompressor.get();
 
     mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
 		mReverb->setParams(0.03f, 0.2f, 0.5f, 50.f, 0.9f);
-    // fxChain[3] = mReverb.get();
   }
 
   /**
@@ -209,10 +206,9 @@ struct Main : Jaffx::Program {
    */
   float processAudio(float in) override {
     float out = in;
-    out = giml::powMix(out, mDelay->processSample(mDetune->processSample(out)));
+    out = giml::powMix(out, mDelay->processSample(mDetune->processSample(out)), mSettings.params[0][0]);
     out = mCompressor->processSample(out);
-    out = giml::powMix(out, mReverb->processSample(out));
-    // for (auto& effect : fxChain) { out = effect->processSample(out); }
+    out = giml::powMix(out, mReverb->processSample(out), mSettings.params[0][1]);
     return out;
   }
   
