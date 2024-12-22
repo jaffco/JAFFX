@@ -7,9 +7,10 @@ namespace Jaffx {
   #define DAISY_SDRAM_BASE_ADDR 0xC0000000
   #define DAISY_SDRAM_SIZE 67108864 //64 * 1024 * 1024 = 64 MB
   #endif
-  #ifndef byte
-  #define byte unsigned char
-  #endif
+  // #ifndef byte
+  // #define byte unsigned char
+  // #endif
+  typedef unsigned char byte;
 
   // singleton class for managing SDRAM throughout a program's lifecycle
   class MyMalloc {
