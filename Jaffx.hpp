@@ -2,49 +2,15 @@
 #include "JaffMalloc.hpp"
 using namespace daisy;
 
-
-Jaffx::MyMalloc m;
+// TODO: organize this better
+Jaffx::MyMalloc m; // global instance of memory manager
 namespace giml {
-	//Overwrite stdlib calls in giml space
-	void* malloc(size_t size) {
-		//std::cout << "MyMalloc" << std::endl;
-		return m.malloc(size);
-	}
-
-	void* calloc(size_t nelemb, size_t size) {
-		//std::cout << "MyCalloc" << std::endl;
-		return m.calloc(nelemb, size);
-	}
-
-	void* realloc(void* ptr, size_t size) {
-		//std::cout << "MyRealloc" << std::endl;
-		return m.realloc(ptr, size);
-	}
-
-	void free(void* ptr) {
-		//std::cout << "MyFree" << std::endl;
-		m.free(ptr);
-	}
+	// Overwrite stdlib calls in giml space
+	void* malloc(size_t size) { return m.malloc(size); }
+	void* calloc(size_t nelemb, size_t size) { return m.calloc(nelemb, size); }
+	void* realloc(void* ptr, size_t size) { return m.realloc(ptr, size); }
+	void free(void* ptr) { m.free(ptr); }
 }
-
-
-// //Overwrite stdlib calls in global space
-// Jaffx::MyMalloc m;
-// void* malloc(size_t size) {
-// 	return m.malloc(size);
-// }
-
-// void* calloc(size_t nelemb, size_t size) {
-// 	return m.calloc(nelemb, size);
-// }
-
-// void *realloc(void *ptr, size_t size) {
-// 	return m.realloc(ptr, size);
-// }
-
-// void free(void* ptr) {
-// 	m.free(ptr);
-// }
 
 namespace Jaffx {
 	struct Program {
@@ -99,18 +65,14 @@ namespace Jaffx {
 
 		// basic mono->dual-mono callback
 		static void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
-			if (instance->debug) {
-				instance->loadMeter.OnBlockStart();
-			}
+			if (instance->debug) { instance->loadMeter.OnBlockStart(); }
 			instance->blockStart();
 			for (size_t i = 0; i < size; i++) {
 				out[0][i] = instance->processAudio(in[0][i]); // format is in/out[channel][sample]
 				out[1][i] = out[0][i];
 			}
 			instance->blockEnd();
-			if (instance->debug) {
-				instance->loadMeter.OnBlockEnd();
-			}
+			if (instance->debug) { instance->loadMeter.OnBlockEnd(); }
 		}
 
 		void start() {
@@ -119,7 +81,7 @@ namespace Jaffx {
 			hardware.SetAudioBlockSize(buffersize); // number of samples handled per callback (buffer size)
 			hardware.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ); // sample rate
 
-			m.MyMallocInit(); //Needs to be called AFTER hardware init, and not in the object's constructor
+			m.MyMallocInit(); // Needs to be called AFTER hardware init, and not in the object's constructor
 
 			// init instance and start callback
 			instance = this;
@@ -128,9 +90,7 @@ namespace Jaffx {
 			hardware.StartAudio(AudioCallback);
 
 			// loop indefinitely
-			while (1) {
-				this->loop(); this->debugLoop();
-			}
+			while (1) { this->loop(); this->debugLoop(); }
 		}
 		
 	};
