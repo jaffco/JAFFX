@@ -22,7 +22,7 @@ struct GimmelTests : Jaffx::Program {
 		t->enable();
 
 		r = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		r->setParams(0.02, 0.25, 0.5, 10, 0.5, giml::Reverb<float>::RoomType::SPHERE);
+		r->setParams(0.02, 0.75, 0.5, 1000, 0.25, giml::Reverb<float>::RoomType::CUBE);
 		r->enable();
 
 		// detuneeee = std::make_unique<giml::Detune<float>>(this->samplerate);
@@ -56,7 +56,7 @@ struct GimmelTests : Jaffx::Program {
 	
 		// return longDelay->processSample(in);
 		//return detuneeee->processSample(in);
-		return r->processSample(in)*(0.25) + in*(1-0.25);
+		return r->processSample(in)*(0.75) + in*(0.25);
 		//return t->processSample(in);
 	}
 
