@@ -160,6 +160,7 @@ struct Main : Jaffx::Program {
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Compressor<float>> mCompressor;
   std::unique_ptr<giml::Reverb<float>> mReverb;
+  std::unique_ptr<giml::Effect<float>> mFxChain[4];
 
 
   void init() override {
@@ -169,12 +170,14 @@ struct Main : Jaffx::Program {
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
 		mDetune->setPitchRatio(0.995);
+    mFxChain[0] = mDetune;
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
 		mDelay->setDelayTime(398.f);
     mDelay->setDamping(0.7f);
     mDelay->setFeedback(0.2f);
     mDelay->setBlend(1.f);
+    mFxChain[1] = mDelay;
 
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
 		mCompressor->setAttack(3.5f);
@@ -183,13 +186,16 @@ struct Main : Jaffx::Program {
     mCompressor->setRatio(4.f);
     mCompressor->setRelease(100.f);
     mCompressor->setThresh(-20.f);
+    mFxChain[2] = mCompressor;
 
     mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		mReverb->setParams(0.03f, 0.2f, 0.5f, 50.f, 0.9f);
+		mReverb->setParams(0.03f, 0.2f, 0.5f, 0.5f, 50.f, 0.9f);
+    mFxChain[3] = mReverb;
   }
 
   /**
    * @todo `for` loop for toggles (depends on containerization for effects)
+   * @todo callbacks for setters
    */
   void blockStart() override {
     Program::blockStart(); // for debug mode
@@ -198,6 +204,14 @@ struct Main : Jaffx::Program {
     mDelay->toggle(mSettings.toggles[1]);
     mCompressor->toggle(mSettings.toggles[2]);
     mReverb->toggle(mSettings.toggles[3]);
+
+    // prototyping setters
+    auto& s = mSettings;
+    if (mInterfaceManager.editMode) {
+      mDetune->setParams(s.params[0][0] * 0.1 + 0.9);
+      mDelay->setParams(1000.0 * s.params[1][0], s.params[1][1], 0.7f, s.params[1][2]);
+      mReverb->setParams(0.02f, 0.2f, s.params[3][1], s.params[3][0], s.params[3][2] * 50.f);
+    }
   }
 
   /**
@@ -206,10 +220,15 @@ struct Main : Jaffx::Program {
    */
   float processAudio(float in) override {
     float out = in;
-    out = giml::powMix(out, mDelay->processSample(mDetune->processSample(out)), mSettings.params[0][0]);
+    //for (auto& e : mFxChain) { out = e->processSample(out); }
+    out = mDelay->processSample(mDetune->processSample(out));
     out = mCompressor->processSample(out);
-    out = giml::powMix(out, mReverb->processSample(out), mSettings.params[0][1]);
-    return out;
+    out = mReverb->processSample(out);
+    if (!mSettings.toggles[4]) {
+      return out;
+    } else {
+      return in;
+    }
   }
   
   void loop() override {
