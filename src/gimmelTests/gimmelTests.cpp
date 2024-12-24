@@ -28,7 +28,7 @@ struct GimmelTests : Jaffx::Program {
 	
 	void init() override {
 		mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		mReverb->setParams(0.02, 0.75, 0.5, 1000, 0.25, giml::Reverb<float>::RoomType::CUBE);
+		mReverb->setParams(0.02, 0.75, 0.5, 0.5, 1000, 0.25, giml::Reverb<float>::RoomType::CUBE);
 		mReverb->enable();
 		signalChain.pushBack(mReverb.get());
 
@@ -41,21 +41,14 @@ struct GimmelTests : Jaffx::Program {
 		mCompressor->setThresh(-35.f);
 		mCompressor->enable();
 		signalChain.pushBack(mCompressor.get());
-
-
-
-
 	}
 
 	float processAudio(float in) override {
 		return signalChain.processSample(in);
 	}
 
-	void loop() override {
+	void loop() override {};
     
-    }
-    
-
 };
 
 int main() {
