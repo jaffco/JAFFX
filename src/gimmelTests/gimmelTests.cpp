@@ -24,11 +24,13 @@ struct GimmelTests : Jaffx::Program {
 	std::unique_ptr<giml::Detune<float>> mDetune;
 	std::unique_ptr<giml::Reverb<float>> mReverb;
 	std::unique_ptr<giml::Tremolo<float>> mTremolo;
+	giml::EffectsLine<float> signalChain;
 	
 	void init() override {
 		mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
 		mReverb->setParams(0.02, 0.75, 0.5, 1000, 0.25, giml::Reverb<float>::RoomType::CUBE);
 		mReverb->enable();
+		signalChain.pushBack(mReverb.get());
 
 		mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
 		mCompressor->setAttack(3.5f);
@@ -38,32 +40,21 @@ struct GimmelTests : Jaffx::Program {
 		mCompressor->setRelease(100.f);
 		mCompressor->setThresh(-35.f);
 		mCompressor->enable();
+		signalChain.pushBack(mCompressor.get());
+
+
+
+
 	}
 
 	float processAudio(float in) override {
-		counter++;
-    if (counter >= this->samplerate * 5 && !trigger) { // once per second
-      counter = 0;
-      trigger = true; // trigger a print
-    }
-	
-		// return longDelay->processSample(in);
-		//return detuneeee->processSample(in);
-		return r->processSample(in)*(0.25) + in*(1-0.25);
-		//return t->processSample(in);
+		return signalChain.processSample(in);
 	}
 
 	void loop() override {
-    if (trigger) { // print set by trigger
-      	// for (int j = 0; j < 5; j++) {
-		// 	hardware.PrintLine("1: %d \n", pInt[j]);
-		// 	hardware.PrintLine("2: %d \n", pInt2[j]);
-		// 	//hardware.PrintLine("hello\n");
-		// }
-      trigger = false;
+    
     }
-    System::Delay(500); // Don't spam the serial!
-  }
+    
 
 };
 
