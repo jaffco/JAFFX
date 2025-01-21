@@ -1,24 +1,6 @@
 #include "../../Jaffx.hpp"
 #include "../../Gimmel/include/gimmel.hpp"
-#include <memory>
-
-/*
-
-What does main need?
-
-- run from SRAM 
-- save to & recall from QSPI
-- do DSP
-- manage UI
-
-What does it need to do these things?
-
-- Modified Makefile [x]
-- `Settings` struct [x]
-- `InterfaceManager` struct [x]
-- parameterizable giml effects []
-
-*/
+#include <memory> // for unique_ptr && make_unique
 
 /**
  * @brief Settings struct for writing and recalling settings
@@ -47,6 +29,7 @@ struct Settings {
 
 /**
  * @brief struct for managing the UI
+ * @todo convert from struct to class
  */
 struct InterfaceManager {
   bool editMode = false;
@@ -62,11 +45,11 @@ struct InterfaceManager {
   /**
    * @brief init function based on specific hardware setup
    * 
-   * Hardware setup 2024-12-08:
+   * Hardware setup 2025-01-17:
    * 
-   * switches 0-5 on pins D24-28
+   * switches 0-4 on pins D24-28
    * 
-   * leds 0-5 on pins D14-10
+   * leds 0-4 on pins D14-10
    * 
    * encoder 0 on pins D15, D16, D17
    * 
@@ -146,38 +129,41 @@ struct InterfaceManager {
 
 /**
  * @brief firmware for the Jaffx pedal
- * @todo implement params
- * @todo containerize fx
+ * @todo implement more params
  * @todo improve DSP
  */
-struct Main : Jaffx::Program {
+class Main : public Jaffx::Firmware {
   PersistentStorage<Settings> mPersistentStorage{hardware.qspi}; // PersistentStorage for settings
 	Settings mSettings; // local settings 
   InterfaceManager mInterfaceManager; 
 
   // effects 
   std::unique_ptr<giml::Detune<float>> mDetune;
+  std::unique_ptr<giml::Phaser<float>> mPhaser;
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Compressor<float>> mCompressor;
   std::unique_ptr<giml::Reverb<float>> mReverb;
-  std::unique_ptr<giml::Effect<float>> mFxChain[4];
+  giml::EffectsLine<float> mFxChain;
 
 
   void init() override {
-    hardware.StartLog();
+    hardware.StartLog(); // ??
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
 		mDetune->setPitchRatio(0.995);
-    mFxChain[0] = mDetune;
+    mFxChain.pushBack(mDetune.get());
+
+    mPhaser = std::make_unique<giml::Phaser<float>>(this->samplerate);
+    mFxChain.pushBack(mPhaser.get());
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
 		mDelay->setDelayTime(398.f);
     mDelay->setDamping(0.7f);
     mDelay->setFeedback(0.2f);
-    mDelay->setBlend(1.f);
-    mFxChain[1] = mDelay;
+    mDelay->setBlend(0.5f);
+    mFxChain.pushBack(mDelay.get());
 
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
 		mCompressor->setAttack(3.5f);
@@ -186,54 +172,40 @@ struct Main : Jaffx::Program {
     mCompressor->setRatio(4.f);
     mCompressor->setRelease(100.f);
     mCompressor->setThresh(-20.f);
-    mFxChain[2] = mCompressor;
+    mFxChain.pushBack(mCompressor.get());
 
     mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		mReverb->setParams(0.03f, 0.2f, 0.5f, 0.5f, 50.f, 0.9f);
-    mFxChain[3] = mReverb;
+		mReverb->setParams(0.03f, 0.8f, 0.5f, 0.5f, 50.f, 0.9f);
+    mFxChain.pushBack(mReverb.get());
   }
 
   /**
-   * @todo `for` loop for toggles (depends on containerization for effects)
-   * @todo callbacks for setters
+   * @todo callbacks for params/setters
    */
   void blockStart() override {
-    Program::blockStart(); // for debug mode
+    Firmware::blockStart(); // for debug mode
     mInterfaceManager.processInput();
-    mDetune->toggle(mSettings.toggles[0]);
-    mDelay->toggle(mSettings.toggles[1]);
-    mCompressor->toggle(mSettings.toggles[2]);
-    mReverb->toggle(mSettings.toggles[3]);
+
+    for (int i = 0; i < mInterfaceManager.numEffects - 1; i++) {
+      mFxChain[i]->toggle(mSettings.toggles[i]);
+    }
 
     // prototyping setters
     auto& s = mSettings;
     if (mInterfaceManager.editMode) {
       mDetune->setParams(s.params[0][0] * 0.1 + 0.9);
       mDelay->setParams(1000.0 * s.params[1][0], s.params[1][1], 0.7f, s.params[1][2]);
-      mReverb->setParams(0.02f, 0.2f, s.params[3][1], s.params[3][0], s.params[3][2] * 50.f);
+      //mReverb->setParams(0.02f, 0.2f, s.params[4][1], s.params[4][0], s.params[4][2] * 50.f);
     }
   }
 
-  /**
-   * @todo implement params
-   * @todo containerize effects
-   */
   float processAudio(float in) override {
-    float out = in;
-    //for (auto& e : mFxChain) { out = e->processSample(out); }
-    out = mDelay->processSample(mDetune->processSample(out));
-    out = mCompressor->processSample(out);
-    out = mReverb->processSample(out);
-    if (!mSettings.toggles[4]) {
-      return out;
-    } else {
-      return in;
-    }
+    return mFxChain.processSample(in);
   }
   
   void loop() override {
-    System::Delay(25); // what's a good value?
     mInterfaceManager.processOutput();
+    System::Delay(25); // what's a good value?
   }
 
 };

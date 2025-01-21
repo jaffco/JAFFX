@@ -6,7 +6,7 @@
 // Hardware config:
 // mLed on pin D15
 
-struct LedCtrl : Jaffx::Program {
+class LedCtrl : public Jaffx::Firmware {
   Led mLed;
   float phase;
 

@@ -1,7 +1,7 @@
 #include "../../Jaffx.hpp"
 
 // AdcReads allow us to sample continuous control values
-struct AdcRead : Jaffx::Program {
+class AdcRead : public Jaffx::Firmware {
   bool trigger = false;
 
   void init() override {

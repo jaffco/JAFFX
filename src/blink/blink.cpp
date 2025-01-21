@@ -1,7 +1,7 @@
 #include "../../Jaffx.hpp"
 
 // Simple blink program, the "Hello World!" of embedded systems
-struct Blink : Jaffx::Program {
+class Blink : public Jaffx::Firmware {
   bool ledState = true;
   bool trigger = false;
   unsigned int counter = 0;

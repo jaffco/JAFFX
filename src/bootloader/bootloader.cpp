@@ -1,6 +1,6 @@
 #include "../../Jaffx.hpp"
 
-struct Bootloader : Jaffx::Program {
+class Bootloader : public Jaffx::Firmware {
 
   bool ledState = true;
   bool trigger = false;

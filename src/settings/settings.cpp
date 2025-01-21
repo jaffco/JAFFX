@@ -15,7 +15,7 @@ struct Settings {
 	bool operator!=(const Settings& a) const {return !(a.ledState==ledState);}
 };
 
-struct SettingsTest : Jaffx::Program {
+class SettingsTest : public Jaffx::Firmware {
   bool trigger = false;
 	PersistentStorage<Settings> savedSettings{this->hardware.qspi}; // PersistentStorage for Settings
 	Settings localSettings = {false}; // local settings, constructed with a default

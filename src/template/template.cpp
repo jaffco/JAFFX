@@ -1,6 +1,6 @@
 #include "../../Jaffx.hpp"
 
-struct Template : Jaffx::Program {
+class Template : public Jaffx::Firmware {
 
   void init() override {}
 
