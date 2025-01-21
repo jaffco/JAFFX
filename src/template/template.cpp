@@ -4,7 +4,11 @@ struct Template : Jaffx::Program {
 
   void init() override {}
 
-  float processAudio(float in) override {return in;}
+  float processAudio(float in) override {
+    return in;
+  }
+
+  void loop() override {}
   
 };
 

@@ -1,6 +1,0 @@
-- Expand Readme
-- Choose License
-- Test & Revise Jaffx Header & Template
-- Test & Revise `init.sh`
-- Test & Revise `run.sh`
-- Test & Revise `.vscode` folder
