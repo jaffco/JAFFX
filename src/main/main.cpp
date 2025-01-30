@@ -129,8 +129,7 @@ struct InterfaceManager {
 
 /**
  * @brief firmware for the Jaffx pedal
- * @todo implement more params
- * @todo improve DSP
+ * @todo implement param callbacks
  */
 class Main : public Jaffx::Firmware {
   PersistentStorage<Settings> mPersistentStorage{hardware.qspi}; // PersistentStorage for settings
@@ -152,30 +151,23 @@ class Main : public Jaffx::Firmware {
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
-		mDetune->setPitchRatio(0.995);
+    mDetune->setParams(0.995f);
     mFxChain.pushBack(mDetune.get());
 
     mPhaser = std::make_unique<giml::Phaser<float>>(this->samplerate);
+    mPhaser->setParams();
     mFxChain.pushBack(mPhaser.get());
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
-		mDelay->setDelayTime(398.f);
-    mDelay->setDamping(0.7f);
-    mDelay->setFeedback(0.2f);
-    mDelay->setBlend(0.5f);
+    mDelay->setParams(398.f, 0.2f, 0.7f, 0.5f);
     mFxChain.pushBack(mDelay.get());
 
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
-		mCompressor->setAttack(3.5f);
-    mCompressor->setKnee(5.f);
-    mCompressor->setMakeupGain(10.f);
-    mCompressor->setRatio(4.f);
-    mCompressor->setRelease(100.f);
-    mCompressor->setThresh(-20.f);
+    mCompressor->setParams(-20.f, 4.f, 10.f, 5.f, 3.5f, 100.f);
     mFxChain.pushBack(mCompressor.get());
 
     mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		mReverb->setParams(0.03f, 0.8f, 0.5f, 0.5f, 50.f, 0.9f);
+		mReverb->setParams(0.03f, 0.3f, 0.5f, 0.5f, 50.f, 0.9f);
     mFxChain.pushBack(mReverb.get());
   }
 
@@ -190,12 +182,14 @@ class Main : public Jaffx::Firmware {
       mFxChain[i]->toggle(mSettings.toggles[i]);
     }
 
-    // prototyping setters
+    // prototyping setters. TODO: Callbacks (for efficiency)
     auto& s = mSettings;
     if (mInterfaceManager.editMode) {
-      mDetune->setParams(s.params[0][0] * 0.1 + 0.9);
-      mDelay->setParams(1000.0 * s.params[1][0], s.params[1][1], 0.7f, s.params[1][2]);
-      //mReverb->setParams(0.02f, 0.2f, s.params[4][1], s.params[4][0], s.params[4][2] * 50.f);
+      mDetune->setParams(s.params[0][0] * 0.1 + 0.9, giml::clip<float>(10.f + s.params[0][1] * 40.f, 10.f, 50.f), s.params[0][2]);
+      mPhaser->setParams(giml::clip<float>(s.params[1][0] * 20.f, 0.f, 20.f), giml::clip<float>(s.params[1][1] * 2 - 1, -1, 1));
+      mDelay->setParams(1000.0 * s.params[2][0], s.params[2][1], 0.7f, s.params[2][3]);
+      mCompressor->setParams(-s.params[3][0] * 60, s.params[3][1] * 10.f, s.params[3][2] * 20, 5.f, 3.5f, 100.f); // TODO: defaults in giml
+      mReverb->setParams(s.params[4][0] * 0.1, s.params[4][1] * 0.3, 0.5f, s.params[4][2], 50.f, 0.9f);
     }
   }
 
