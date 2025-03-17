@@ -68,7 +68,7 @@ struct MenuManager {
 
 };
 
-struct Menu : Jaffx::Program {
+class Menu : public Jaffx::Firmware {
   MenuManager mMenuManager;
 
   void init() override {

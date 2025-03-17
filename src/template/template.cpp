@@ -1,10 +1,14 @@
 #include "../../Jaffx.hpp"
 
-struct Template : Jaffx::Program {
+class Template : public Jaffx::Firmware {
 
   void init() override {}
 
-  float processAudio(float in) override {return in;}
+  float processAudio(float in) override {
+    return in;
+  }
+
+  void loop() override {}
   
 };
 

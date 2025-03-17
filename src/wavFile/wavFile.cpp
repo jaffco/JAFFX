@@ -1,7 +1,7 @@
 #include "../../Jaffx.hpp"
 #include "test.h"
 
-struct WavFile : Jaffx::Program {
+class WavFile : public Jaffx::Firmware {
   int readHead = 0;
 
   void init() override {}

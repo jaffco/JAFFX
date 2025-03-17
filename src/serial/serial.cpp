@@ -2,7 +2,7 @@
 
 // Program that demonstrates printing to serial bus
 // Great utility for debugging
-struct Serial : Jaffx::Program {
+class Serial : public Jaffx::Firmware {
   const char message[7] = "Hello!"; // set a message
   unsigned int counter = 0;
   bool trigger = false;

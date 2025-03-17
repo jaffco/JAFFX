@@ -16,7 +16,7 @@
 // Reverb: works... but fragile
 // Tremolo: working!
 
-struct GimmelTests : Jaffx::Program {
+class GimmelTests : public Jaffx::Firmware {
 	std::unique_ptr<giml::Biquad<float>> mBiquad;
 	std::unique_ptr<giml::Chorus<float>> mChorus;
 	std::unique_ptr<giml::Compressor<float>> mCompressor;

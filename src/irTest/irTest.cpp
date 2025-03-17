@@ -1,7 +1,7 @@
 #include "../../Jaffx.hpp"
 
 // This app allows for easy testing and effect's impulse response
-struct IrTest : Jaffx::Program {
+class IrTest : public Jaffx::Firmware {
   bool impulse = false;
   int counter = 0;
 

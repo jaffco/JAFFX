@@ -3,7 +3,7 @@
 
 // Basic program that implements an oscillator from Gimmel,
 // Our audio effects library
-struct Oscillator : Jaffx::Program {
+class Oscillator : public Jaffx::Firmware {
   // add member objects
   giml::SinOsc<float> osc{samplerate};
 

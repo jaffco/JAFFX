@@ -1,6 +1,6 @@
 #include "../../Jaffx.hpp"
 
-struct EncoderRead : Jaffx::Program {
+class EncoderRead : public Jaffx::Firmware {
   Encoder mEncoder;
   int encoderState = 0;
 

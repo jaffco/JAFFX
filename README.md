@@ -1,4 +1,4 @@
-# JAFFX: Affordable, portable, hackable audio fx for everybody
+# JAFFX: Affordable, portable, hackable digital audio for everybody
 
 The Jaffx repository is a free, open-source tool for programming not only the JAFFX reprogrammable pedal, but also other projects using the [Daisy Seed](https://electro-smith.com/).
 
