@@ -14,7 +14,7 @@ namespace giml {
 
 namespace Jaffx {
 class Firmware {
-protected:
+public:
 	// declare an instance of the hardware
 	static DaisySeed hardware;
 	static Firmware* instance; // Static pointer to the current instance of Program

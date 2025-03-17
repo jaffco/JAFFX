@@ -146,7 +146,8 @@ class Main : public Jaffx::Firmware {
 
 
   void init() override {
-    hardware.StartLog(); // ??
+    hardware.StartLog();
+    this->debug = true;
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
@@ -178,7 +179,7 @@ class Main : public Jaffx::Firmware {
     Firmware::blockStart(); // for debug mode
     mInterfaceManager.processInput();
 
-    for (int i = 0; i < mInterfaceManager.numEffects - 1; i++) {
+    for (int i = 0; i < mFxChain.size(); i++) {
       mFxChain[i]->toggle(mSettings.toggles[i]);
     }
 
