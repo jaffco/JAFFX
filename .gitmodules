@@ -7,3 +7,6 @@
 [submodule "RTNeural"]
 	path = RTNeural
 	url = https://github.com/jatinchowdhury18/RTNeural
+[submodule "eigen"]
+	path = eigen
+	url = https://gitlab.com/libeigen/eigen
