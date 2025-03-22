@@ -1,7 +1,7 @@
 # Project Name
 TARGET = namTest
 
-CPP_STANDARD = -std=c++20
+CPP_STANDARD = -std=c++17
 OPT=-Ofast
 
 # Set App Type

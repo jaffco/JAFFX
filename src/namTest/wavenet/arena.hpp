@@ -95,6 +95,21 @@ public:
     }
 
     /**
+     * @brief A simple span class for the memory arena.
+     */
+    template <typename T>
+    struct Span 
+    {
+        T* ptr;
+        size_t size;
+
+        Span(T* p, size_t s) : ptr(p), size(s) {}
+
+        T& operator[](size_t i) { return ptr[i]; }
+        const T& operator[](size_t i) const { return ptr[i]; }
+    };
+
+    /**
    * Returns a span of type T, and size count.
    * The returned memory will be un-initialized, so be sure to clear it manually
    * if needed.
@@ -102,7 +117,7 @@ public:
     template <typename T, typename IntType>
     auto make_span (IntType count, size_t alignment = default_byte_alignment)
     {
-        return std::span { allocate<T> (count, alignment),
+        return Span<T> { allocate<T> (count, alignment),
                            static_cast<size_t> (count) };
     }
 
