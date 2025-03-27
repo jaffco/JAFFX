@@ -6,4 +6,4 @@
 	url = https://github.com/electro-smith/libDaisy
 [submodule "RTNeural"]
 	path = RTNeural
-	url = https://github.com/jatinchowdhury18/RTNeural
+	url = https://github.com/joeljaffesd/RTNeural

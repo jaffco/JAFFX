@@ -1,5 +1,5 @@
 #include "../../RTNeural/RTNeural/RTNeural.h"
-#include "wavenet/wavenet_model.hpp"
+#include "../../RTNeural/modules/rt-nam/rt-nam.hpp"
 #include "model.h"
 #include "../../Jaffx.hpp"
 
@@ -16,50 +16,39 @@
 #include "../../Gimmel/include/delay.hpp"
 #include <memory> // for unique_ptr && make_unique
 
-struct NAMMathsProvider
-{
-#if RTNEURAL_USE_EIGEN
-  template <typename Matrix>
-  static auto tanh (const Matrix& x) {
-    // See: math_approx::tanh<3>
-    const auto x_poly = x.array() * (1.0f + 0.183428244899f * x.array().square());
-    return x_poly.array() * (x_poly.array().square() + 1.0f).array().rsqrt();
-    //return x.array().tanh(); 
-    // Tried using Eigen's built in tanh(), also works, failed on the same larger models as above custom tanh
-  }
-#elif RTNEURAL_USE_XSIMD
-  template <typename T>
-  static T tanh (const T& x) {
-    return math_approx::tanh<3> (x);
-  }
-#endif
-};
+using Layer1 =
+wavenet::Layer_Array<float, 
+                     1, // input_size
+                     1, // condition_size
+                     2, // head_size
+                     2, // channels
+                     3, // kernel_size
+                     wavenet::Dilations<1, 2, 4, 8, 16, 32, 64>, // dilations
+                     false, // head_bias
+                     wavenet::NAMMathsProvider>; // maths provider
 
-using Dilations = wavenet::Dilations<1, 2, 4, 8, 16, 32, 64>;
-using Dilations2 = wavenet::Dilations<128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512>;
-wavenet::Wavenet_Model<float,
-                       1,
-                       wavenet::Layer_Array<float, 1, 1, 2, 2, 3, Dilations, false, NAMMathsProvider>,
-                       wavenet::Layer_Array<float, 2, 1, 1, 2, 3, Dilations2, true, NAMMathsProvider>>
-    rtneural_wavenet; 
-
-void loadModel(ModelWeights& model) {
-  rtneural_wavenet.load_weights(model.weights);
-  static constexpr size_t N = 1; // number of samples sent through model at once
-  rtneural_wavenet.prepare (N); // This is needed, including this allowed the led to come on before freezing
-  rtneural_wavenet.prewarm();  // Note: looks like this just sends some 0's through the model
-}
+using Layer2 = 
+wavenet::Layer_Array<float, 
+                     2, // input_size
+                     1, // condition_size
+                     1, // head_size
+                     2, // channels
+                     3, // kernel_size
+                     wavenet::Dilations<128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512>, // dilations
+                     true, // head_bias
+                     wavenet::NAMMathsProvider>; // maths provider
 
 class NamTest : public Jaffx::Firmware {
-  ModelWeights model;
+  ModelWeights weights;
+  wavenet::RTWavenet<1, 1, Layer1, Layer2> model;
   std::unique_ptr<giml::Detune<float>> mDetune;
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Delay<float>> mDelay2;
   giml::EffectsLine<float> mFxChain;
 
   void init() override {
-    loadWeights(model);
-    loadModel(model);
+    this->debug = true;
+    model.loadModel(weights.weights);
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
     mDetune->setParams(0.995f);
@@ -77,7 +66,7 @@ class NamTest : public Jaffx::Firmware {
   }
 
   float processAudio(float in) override {
-    float dry = rtneural_wavenet.forward(in);
+    float dry = model.model.forward(in);
     float wet = mDetune->processSample(dry);
     float delay1 = mDelay->processSample(wet);
     float delay2 = mDelay2->processSample(wet);
