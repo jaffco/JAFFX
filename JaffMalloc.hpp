@@ -539,4 +539,5 @@ public: //TODO: This needs to be private in production, public now for testing c
     printf("--------------------------------------------------------\n");
   }
 };
+#undef byte
 } // namespace Jaffx

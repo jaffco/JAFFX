@@ -1,7 +1,7 @@
 # Project Name
 TARGET = namTest
 
-CPP_STANDARD = -std=c++14
+CPP_STANDARD = -std=gnu++14
 OPT=-Ofast
 
 # Set App Type
@@ -22,5 +22,6 @@ include $(SYSTEM_FILES_DIR)/Makefile
 
 C_INCLUDES += -I../../RTNeural
 C_INCLUDES += -I../../RTNeural/modules/Eigen
+C_INCLUDES += -I../../RTNeural/modules/rt-nam
 CPPFLAGS += -DRTNEURAL_DEFAULT_ALIGNMENT=8 -DRTNEURAL_NO_DEBUG=1 -DRTNEURAL_USE_EIGEN=1
 

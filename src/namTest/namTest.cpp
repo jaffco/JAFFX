@@ -1,42 +1,7 @@
-#include "../../RTNeural/RTNeural/RTNeural.h"
-#include "../../RTNeural/modules/rt-nam/rt-nam.hpp"
-#include "model.h"
 #include "../../Jaffx.hpp"
-
-#ifndef M_PI
-#define M_PI (3.14159265358979323846)
-#endif
-#ifndef M_E
-#define M_E (2.71828182845904523536)
-#endif
-#ifndef M_PI_2
-#define M_PI_2 (M_PI / 2)
-#endif
-#include "../../Gimmel/include/detune.hpp"
-#include "../../Gimmel/include/delay.hpp"
+#include "../../Gimmel/include/gimmel.hpp"
+#include "model.h"
 #include <memory> // for unique_ptr && make_unique
-
-using Layer1 =
-wavenet::Layer_Array<float, 
-                     1, // input_size
-                     1, // condition_size
-                     2, // head_size
-                     2, // channels
-                     3, // kernel_size
-                     wavenet::Dilations<1, 2, 4, 8, 16, 32, 64>, // dilations
-                     false, // head_bias
-                     wavenet::NAMMathsProvider>; // maths provider
-
-using Layer2 = 
-wavenet::Layer_Array<float, 
-                     2, // input_size
-                     1, // condition_size
-                     1, // head_size
-                     2, // channels
-                     3, // kernel_size
-                     wavenet::Dilations<128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512>, // dilations
-                     true, // head_bias
-                     wavenet::NAMMathsProvider>; // maths provider
 
 class NamTest : public Jaffx::Firmware {
   ModelWeights weights;
