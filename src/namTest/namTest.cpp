@@ -3,9 +3,21 @@
 #include "model.h"
 #include <memory> // for unique_ptr && make_unique
 
+// Add NAM compatibility to giml
+namespace giml {
+  template<typename T, typename Layer1, typename Layer2>
+  class AmpModeler : public Effect<T>, public wavenet::RTWavenet<1, 1, Layer1, Layer2> {
+  public:
+    T processSample(const T& input) override {
+      if (!this->enabled) { return input; }
+      return this->model.forward(input);
+    }
+  };
+}
+	
 class NamTest : public Jaffx::Firmware {
   ModelWeights weights;
-  wavenet::RTWavenet<1, 1, Layer1, Layer2> model;
+  giml::AmpModeler<float, Layer1, Layer2> model;
   std::unique_ptr<giml::Detune<float>> mDetune;
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Delay<float>> mDelay2;
@@ -14,6 +26,8 @@ class NamTest : public Jaffx::Firmware {
   void init() override {
     this->debug = true;
     model.loadModel(weights.weights);
+    model.enable();
+    mFxChain.pushBack(&model);
 
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
     mDetune->setParams(0.995f);
@@ -23,7 +37,6 @@ class NamTest : public Jaffx::Firmware {
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
     mDelay->setParams(398.f, 0.3f, 0.7f, 0.24f);
     mDelay->enable();
-    mFxChain.pushBack(mDelay.get());
 
     mDelay2 = std::make_unique<giml::Delay<float>>(this->samplerate);
     mDelay2->setParams(798.f, 0.2f, 0.7f, 0.24f);
@@ -31,12 +44,11 @@ class NamTest : public Jaffx::Firmware {
   }
 
   float processAudio(float in) override {
-    float dry = model.model.forward(in);
-    float wet = mDetune->processSample(dry);
-    float delay1 = mDelay->processSample(wet);
-    float delay2 = mDelay2->processSample(wet);
-    wet = giml::linMix(delay1, delay2, 0.5f);
-    return wet;
+    float dry = mFxChain.processSample(in);
+    float delay1 = mDelay->processSample(dry);
+    float delay2 = mDelay2->processSample(dry);
+    float output = giml::linMix(delay1, delay2, 0.5f);
+    return output;
   }
 
   void loop() override {}
