@@ -144,29 +144,33 @@ class Main : public Jaffx::Firmware {
   std::unique_ptr<giml::Reverb<float>> mReverb;
   giml::EffectsLine<float> mFxChain;
 
-
   void init() override {
     hardware.StartLog();
     this->debug = true;
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
+    // shrunk from ~10% to ~5% CPU load 2025-04-20
     mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
     mDetune->setParams(0.995f);
     mFxChain.pushBack(mDetune.get());
 
+    // // ~28% CPU load
     mPhaser = std::make_unique<giml::Phaser<float>>(this->samplerate);
     mPhaser->setParams();
     mFxChain.pushBack(mPhaser.get());
 
+    // // ~3% CPU load  
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
     mDelay->setParams(398.f, 0.2f, 0.7f, 0.5f);
     mFxChain.pushBack(mDelay.get());
 
+    // // ~6% CPU load
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
     mCompressor->setParams(-20.f, 4.f, 10.f, 5.f, 3.5f, 100.f);
     mFxChain.pushBack(mCompressor.get());
 
+    // // Crashes the system
     mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
 		mReverb->setParams(0.03f, 0.3f, 0.5f, 0.5f, 50.f, 0.9f);
     mFxChain.pushBack(mReverb.get());
