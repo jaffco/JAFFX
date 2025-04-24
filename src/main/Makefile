@@ -1,6 +1,12 @@
 # Project Name
 TARGET = main
 
+# Set the C++ standard
+CPP_STANDARD = -std=gnu++14
+
+# Set optimization level
+OPT=-Ofast
+
 # Set App Type
 APP_TYPE = BOOT_SRAM
 
@@ -13,7 +19,19 @@ CPP_SOURCES = main.cpp
 # Library Locations
 LIBDAISY_DIR = ../../libDaisy
 
+# C_SOURCES = $(wildcard ../../libDaisy/Drivers/CMSIS-DSP/Source/*/*.c)
+C_SOURCES = \
+$(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source/FastMathFunctions/arm_sin_f32.c \
+$(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source/FastMathFunctions/arm_cos_f32.c \
+$(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source/ControllerFunctions/arm_sin_cos_f32.c \
+$(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source/CommonTables/arm_common_tables.c \
+
 # Core location, and generic makefile.
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile
 
+# Includes and flags for RTNeural
+C_INCLUDES += -I../../RTNeural
+C_INCLUDES += -I../../RTNeural/modules/Eigen
+C_INCLUDES += -I../../RTNeural/modules/rt-nam
+CPPFLAGS += -DRTNEURAL_DEFAULT_ALIGNMENT=8 -DRTNEURAL_NO_DEBUG=1 -DRTNEURAL_USE_EIGEN=1

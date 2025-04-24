@@ -1,5 +1,6 @@
 #include "libDaisy/src/daisy_seed.h"
 #include "JaffMalloc.hpp"
+#include "arm_math.h"
 using namespace daisy;
 
 // TODO: organize this better
@@ -10,6 +11,15 @@ namespace giml {
 	void* calloc(size_t nelemb, size_t size) { return m.calloc(nelemb, size); }
 	void* realloc(void* ptr, size_t size) { return m.realloc(ptr, size); }
 	void free(void* ptr) { m.free(ptr); }
+
+	inline float sin(float x) { 
+		return arm_sin_f32(x); 
+	}
+
+	inline float cos(float x) { 
+		return arm_cos_f32(x); 
+	}
+
 }
 
 namespace Jaffx {

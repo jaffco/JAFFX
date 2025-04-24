@@ -2,6 +2,19 @@
 #include "../../Gimmel/include/gimmel.hpp"
 #include <memory> // for unique_ptr && make_unique
 
+#include "model.h"
+// Add NAM compatibility to giml
+namespace giml {
+  template<typename T, typename Layer1, typename Layer2>
+  class AmpModeler : public Effect<T>, public wavenet::RTWavenet<1, 1, Layer1, Layer2> {
+  public:
+    T processSample(const T& input) override {
+      if (!this->enabled) { return input; }
+      return this->model.forward(input);
+    }
+  };
+}
+
 /**
  * @brief Settings struct for writing and recalling settings
  * with persistent memory
@@ -44,16 +57,6 @@ struct InterfaceManager {
 
   /**
    * @brief init function based on specific hardware setup
-   * 
-   * Hardware setup 2025-01-17:
-   * 
-   * switches 0-4 on pins D24-28
-   * 
-   * leds 0-4 on pins D14-10
-   * 
-   * encoder 0 on pins D15, D16, D17
-   * 
-   * encoders 1-3 on pins D18-22, D19-23, D17
    */
   void init(Settings& local, PersistentStorage<Settings>& saved) {
     // init settings
@@ -62,20 +65,20 @@ struct InterfaceManager {
     loadSettings();
 
     // init ctrls
-    switches[0].Init(seed::D24);
-    switches[1].Init(seed::D25);
-    switches[2].Init(seed::D26);
-    switches[3].Init(seed::D27);
-    switches[4].Init(seed::D28);
-    leds[0].Init(seed::D14, GPIO::Mode::OUTPUT);
-    leds[1].Init(seed::D13, GPIO::Mode::OUTPUT);
-    leds[2].Init(seed::D12, GPIO::Mode::OUTPUT);
-    leds[3].Init(seed::D11, GPIO::Mode::OUTPUT); 
-    leds[4].Init(seed::D10, GPIO::Mode::OUTPUT);  
-    encoders[0].Init(seed::D15, seed::D16, seed::D17);
-    encoders[1].Init(seed::D18, seed::D19, seed::D17);
-    encoders[2].Init(seed::D20, seed::D21, seed::D17);
-    encoders[3].Init(seed::D22, seed::D23, seed::D17);
+    switches[0].Init(seed::D18);
+    switches[1].Init(seed::D16);
+    switches[2].Init(seed::D2);
+    switches[3].Init(seed::D5);
+    switches[4].Init(seed::D3);
+    leds[0].Init(seed::D19, GPIO::Mode::OUTPUT);
+    leds[1].Init(seed::D17, GPIO::Mode::OUTPUT);
+    leds[2].Init(seed::D1, GPIO::Mode::OUTPUT);
+    leds[3].Init(seed::D6, GPIO::Mode::OUTPUT); 
+    leds[4].Init(seed::D4, GPIO::Mode::OUTPUT);  
+    encoders[0].Init(seed::D21, seed::D20, seed::D22);
+    encoders[1].Init(seed::D23, seed::D24, seed::D22);
+    encoders[2].Init(seed::D25, seed::D26, seed::D22);
+    encoders[3].Init(seed::D27, seed::D28, seed::D22);
   }
 
   void processInput() {
@@ -101,7 +104,7 @@ struct InterfaceManager {
       }
     } else { // if !editMode
       for (int i = 0; i < numEffects; i++) {
-        if (switches[i].RisingEdge()) { // Toggle switches... Pressed() or RisingEdge()?
+        if (switches[i].FallingEdge()) { // Toggle switches
           localSettings->toggles[i] = !localSettings->toggles[i];
         }
       }
@@ -137,11 +140,12 @@ class Main : public Jaffx::Firmware {
   InterfaceManager mInterfaceManager; 
 
   // effects 
-  std::unique_ptr<giml::Detune<float>> mDetune;
   std::unique_ptr<giml::Phaser<float>> mPhaser;
+  ModelWeights weights; 
+  giml::AmpModeler<float, Layer1, Layer2> model;
+  std::unique_ptr<giml::Chorus<float>> mChorus;
+  std::unique_ptr<giml::Tremolo<float>> mTremolo;
   std::unique_ptr<giml::Delay<float>> mDelay;
-  std::unique_ptr<giml::Compressor<float>> mCompressor;
-  std::unique_ptr<giml::Reverb<float>> mReverb;
   giml::EffectsLine<float> mFxChain;
 
   void init() override {
@@ -150,30 +154,43 @@ class Main : public Jaffx::Firmware {
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
-    // shrunk from ~10% to ~5% CPU load 2025-04-20
-    mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
-    mDetune->setParams(0.995f);
-    mFxChain.pushBack(mDetune.get());
+    mTremolo = std::make_unique<giml::Tremolo<float>>(this->samplerate);
+    mTremolo->setParams();
+    mTremolo->enable();
+    mFxChain.pushBack(mTremolo.get());
 
-    // // ~28% CPU load
+    // ~19% CPU load
     mPhaser = std::make_unique<giml::Phaser<float>>(this->samplerate);
     mPhaser->setParams();
+    mPhaser->enable();
     mFxChain.pushBack(mPhaser.get());
 
-    // // ~3% CPU load  
+    model.loadModel(weights.weights);
+    model.enable();
+    mFxChain.pushBack(&model);
+
+    mChorus = std::make_unique<giml::Chorus<float>>(this->samplerate);
+    mChorus->setParams();
+    mChorus->enable();
+    mFxChain.pushBack(mChorus.get());
+
+    // ~3% CPU load  
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
-    mDelay->setParams(398.f, 0.2f, 0.7f, 0.5f);
+    mDelay->setParams(398.f, 0.3f, 0.7f, 0.24f);
+    mDelay->enable();
     mFxChain.pushBack(mDelay.get());
 
-    // // ~6% CPU load
-    mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
-    mCompressor->setParams(-20.f, 4.f, 10.f, 5.f, 3.5f, 100.f);
-    mFxChain.pushBack(mCompressor.get());
+    // ~6% CPU load
+    // mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
+    // mCompressor->setParams(-20.f, 4.f, 10.f, 5.f, 3.5f, 100.f);
+    // mCompressor->enable();
+    // mFxChain.pushBack(mCompressor.get());
 
-    // // Crashes the system
-    mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		mReverb->setParams(0.03f, 0.3f, 0.5f, 0.5f, 50.f, 0.9f);
-    mFxChain.pushBack(mReverb.get());
+    // Crashes the system
+    // mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
+		// mReverb->setParams(0.02f, 0.5f, 0.5f, 0.24f, 5.f, 0.9f); // matches AlloFx
+    // mReverb->enable();
+    // mFxChain.pushBack(mReverb.get());
   }
 
   /**
@@ -183,18 +200,18 @@ class Main : public Jaffx::Firmware {
     Firmware::blockStart(); // for debug mode
     mInterfaceManager.processInput();
 
-    for (int i = 0; i < mFxChain.size(); i++) {
+    for (unsigned int i = 0; i < mFxChain.size(); i++) {
       mFxChain[i]->toggle(mSettings.toggles[i]);
     }
 
     // prototyping setters. TODO: Callbacks (for efficiency)
     auto& s = mSettings;
     if (mInterfaceManager.editMode) {
-      mDetune->setParams(s.params[0][0] * 0.1 + 0.9, giml::clip<float>(10.f + s.params[0][1] * 40.f, 10.f, 50.f), s.params[0][2]);
-      mPhaser->setParams(giml::clip<float>(s.params[1][0] * 20.f, 0.f, 20.f), giml::clip<float>(s.params[1][1] * 2 - 1, -1, 1));
-      mDelay->setParams(1000.0 * s.params[2][0], s.params[2][1], 0.7f, s.params[2][3]);
-      mCompressor->setParams(-s.params[3][0] * 60, s.params[3][1] * 10.f, s.params[3][2] * 20, 5.f, 3.5f, 100.f); // TODO: defaults in giml
-      mReverb->setParams(s.params[4][0] * 0.1, s.params[4][1] * 0.3, 0.5f, s.params[4][2], 50.f, 0.9f);
+      // mDetune->setParams(s.params[0][0] * 0.1 + 0.9, giml::clip<float>(10.f + s.params[0][1] * 40.f, 10.f, 50.f), s.params[0][2]);
+      // mPhaser->setParams(giml::clip<float>(s.params[1][0] * 20.f, 0.f, 20.f), giml::clip<float>(s.params[1][1] * 2 - 1, -1, 1));
+      // mDelay->setParams(1000.0 * s.params[2][0], s.params[2][1], 0.7f, s.params[2][3]);
+      // mCompressor->setParams(-s.params[3][0] * 60, s.params[3][1] * 10.f, s.params[3][2] * 20, 5.f, 3.5f, 100.f); // TODO: defaults in giml
+      // mReverb->setParams(s.params[4][0] * 0.1, s.params[4][1] * 0.3, 0.5f, s.params[4][2], 50.f, 0.9f);
     }
   }
 
