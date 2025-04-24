@@ -19,7 +19,6 @@ CPP_SOURCES = main.cpp
 # Library Locations
 LIBDAISY_DIR = ../../libDaisy
 
-# C_SOURCES = $(wildcard ../../libDaisy/Drivers/CMSIS-DSP/Source/*/*.c)
 C_SOURCES = \
 $(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source/FastMathFunctions/arm_sin_f32.c \
 $(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source/FastMathFunctions/arm_cos_f32.c \

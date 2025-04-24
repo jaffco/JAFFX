@@ -146,6 +146,7 @@ class Main : public Jaffx::Firmware {
   std::unique_ptr<giml::Chorus<float>> mChorus;
   std::unique_ptr<giml::Tremolo<float>> mTremolo;
   std::unique_ptr<giml::Delay<float>> mDelay;
+  std::unique_ptr<giml::Compressor<float>> mCompressor;
   giml::EffectsLine<float> mFxChain;
 
   void init() override {
@@ -154,33 +155,36 @@ class Main : public Jaffx::Firmware {
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
+    // ~1% CPU load
     mTremolo = std::make_unique<giml::Tremolo<float>>(this->samplerate);
     mTremolo->setParams();
     mTremolo->enable();
     mFxChain.pushBack(mTremolo.get());
 
-    // ~19% CPU load
+    // ~15% CPU load
     mPhaser = std::make_unique<giml::Phaser<float>>(this->samplerate);
     mPhaser->setParams();
     mPhaser->enable();
     mFxChain.pushBack(mPhaser.get());
 
+    // ~71% CPU load
     model.loadModel(weights.weights);
     model.enable();
     mFxChain.pushBack(&model);
 
+    // ~3% CPU load
     mChorus = std::make_unique<giml::Chorus<float>>(this->samplerate);
     mChorus->setParams();
     mChorus->enable();
     mFxChain.pushBack(mChorus.get());
 
-    // ~3% CPU load  
+    // ~2% CPU load  
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
     mDelay->setParams(398.f, 0.3f, 0.7f, 0.24f);
     mDelay->enable();
     mFxChain.pushBack(mDelay.get());
 
-    // ~6% CPU load
+    // ~5% CPU load
     // mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
     // mCompressor->setParams(-20.f, 4.f, 10.f, 5.f, 3.5f, 100.f);
     // mCompressor->enable();
