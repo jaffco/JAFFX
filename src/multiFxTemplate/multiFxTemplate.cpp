@@ -2,6 +2,37 @@
 #include "../../Gimmel/include/gimmel.hpp"
 #include <memory> // for unique_ptr && make_unique
 
+#include "../namTest/FenderModel.h"
+#include "../namTest/MarshallModel.h"
+
+// Add NAM compatibility to giml
+namespace giml {
+  template<typename T, typename Layer1, typename Layer2>
+  class AmpModeler : public Effect<T> {
+  private:
+    wavenet::RTWavenet<1, 1, Layer1, Layer2> clean, dirty;
+    FenderModelWeights cleanWeights;
+    MarshallModelWeights dirtyWeights;
+
+  public:
+    void loadModels() {
+      this->clean.loadModel(this->cleanWeights.weights);
+      this->dirty.loadModel(this->dirtyWeights.weights);
+    }
+    
+    T processSample(const T& input) override {
+      if (!this->enabled) { return this->clean.model.forward(input); }
+      return this->dirty.model.forward(input);
+    }
+  };
+}
+
+  //=====================================================================
+  // ADD USER-DEFINED DECLARATIONS AND DEFINITIONS HERE
+  // class UserDefinedEffect : public Effect<float> {};
+  // ... 
+  //=====================================================================
+
 /**
  * @brief Settings struct for writing and recalling settings
  * with persistent memory
@@ -62,26 +93,31 @@ struct InterfaceManager {
     loadSettings();
 
     // init ctrls
-    switches[0].Init(seed::D24);
-    switches[1].Init(seed::D25);
-    switches[2].Init(seed::D26);
-    switches[3].Init(seed::D27);
-    switches[4].Init(seed::D28);
-    leds[0].Init(seed::D14, GPIO::Mode::OUTPUT);
-    leds[1].Init(seed::D13, GPIO::Mode::OUTPUT);
-    leds[2].Init(seed::D12, GPIO::Mode::OUTPUT);
-    leds[3].Init(seed::D11, GPIO::Mode::OUTPUT); 
-    leds[4].Init(seed::D10, GPIO::Mode::OUTPUT);  
-    encoders[0].Init(seed::D15, seed::D16, seed::D17);
-    encoders[1].Init(seed::D18, seed::D19, seed::D17);
-    encoders[2].Init(seed::D20, seed::D21, seed::D17);
-    encoders[3].Init(seed::D22, seed::D23, seed::D17);
+    switches[0].Init(seed::D18, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
+    switches[1].Init(seed::D16, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
+    switches[2].Init(seed::D2, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
+    switches[3].Init(seed::D5, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
+    switches[4].Init(seed::D3, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
+    leds[0].Init(seed::D19, GPIO::Mode::OUTPUT);
+    leds[1].Init(seed::D17, GPIO::Mode::OUTPUT);
+    leds[2].Init(seed::D1, GPIO::Mode::OUTPUT);
+    leds[3].Init(seed::D6, GPIO::Mode::OUTPUT); 
+    leds[4].Init(seed::D4, GPIO::Mode::OUTPUT);  
+    encoders[0].Init(seed::D21, seed::D20, seed::D22);
+    encoders[1].Init(seed::D23, seed::D24, seed::D22);
+    encoders[2].Init(seed::D25, seed::D26, seed::D22);
+    encoders[3].Init(seed::D27, seed::D28, seed::D22);
   }
 
   void processInput() {
     // debounce encoders and switches
     for (auto& e : encoders) { e.Debounce(); }
     for (auto& s : switches) { s.Debounce(); }
+
+    // hold leftmost switch to enter bootloader
+    if (switches[0].TimeHeldMs() > 500.f) { 
+      System::ResetToBootloader(System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
+    }
     
     // check encoder[0] for edit mode. 
     // `RisingEdge()` triggers at boot, `FallingEdge()` preferred

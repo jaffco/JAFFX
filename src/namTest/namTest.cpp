@@ -1,22 +1,33 @@
 #include "../../Jaffx.hpp"
 #include "../../Gimmel/include/gimmel.hpp"
-#include "model.h"
 #include <memory> // for unique_ptr && make_unique
+
+#include "FenderModel.h"
+#include "MarshallModel.h"
 
 // Add NAM compatibility to giml
 namespace giml {
   template<typename T, typename Layer1, typename Layer2>
-  class AmpModeler : public Effect<T>, public wavenet::RTWavenet<1, 1, Layer1, Layer2> {
+  class AmpModeler : public Effect<T> {
+  private:
+    wavenet::RTWavenet<1, 1, Layer1, Layer2> clean, dirty;
+    FenderModelWeights cleanWeights;
+    MarshallModelWeights dirtyWeights;
+
   public:
+    void loadModels() {
+      this->clean.loadModel(this->cleanWeights.weights);
+      this->dirty.loadModel(this->dirtyWeights.weights);
+    }
+    
     T processSample(const T& input) override {
-      if (!this->enabled) { return input; }
-      return this->model.forward(input);
+      if (!this->enabled) { return this->clean.model.forward(input); }
+      return this->dirty.model.forward(input);
     }
   };
 }
 	
 class NamTest : public Jaffx::Firmware {
-  ModelWeights weights;
   giml::AmpModeler<float, Layer1, Layer2> model;
   std::unique_ptr<giml::Detune<float>> mDetune;
   std::unique_ptr<giml::Delay<float>> mDelay;
@@ -25,7 +36,7 @@ class NamTest : public Jaffx::Firmware {
 
   void init() override {
     this->debug = true;
-    model.loadModel(weights.weights);
+    model.loadModels();
     model.enable();
     mFxChain.pushBack(&model);
 
