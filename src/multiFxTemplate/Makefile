@@ -1,5 +1,5 @@
 # Project Name
-TARGET = main
+TARGET = multiFxTemplate
 
 # Set the C++ standard
 CPP_STANDARD = -std=gnu++14
@@ -14,7 +14,7 @@ APP_TYPE = BOOT_SRAM
 BOOT_BIN = $(SYSTEM_FILES_DIR)/dsy_bootloader_v6_2-intdfu-10ms.bin
 
 # Sources
-CPP_SOURCES = main.cpp
+CPP_SOURCES = multiFxTemplate.cpp
 
 # Library Locations
 LIBDAISY_DIR = ../../libDaisy

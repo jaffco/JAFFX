@@ -27,6 +27,12 @@ namespace giml {
   };
 }
 
+  //=====================================================================
+  // ADD USER-DEFINED DECLARATIONS AND DEFINITIONS HERE
+  // class UserDefinedEffect : public Effect<float> {};
+  // ... 
+  //=====================================================================
+
 /**
  * @brief Settings struct for writing and recalling settings
  * with persistent memory
@@ -69,6 +75,16 @@ struct InterfaceManager {
 
   /**
    * @brief init function based on specific hardware setup
+   * 
+   * Hardware setup 2025-01-17:
+   * 
+   * switches 0-4 on pins D24-28
+   * 
+   * leds 0-4 on pins D14-10
+   * 
+   * encoder 0 on pins D15, D16, D17
+   * 
+   * encoders 1-3 on pins D18-22, D19-23, D17
    */
   void init(Settings& local, PersistentStorage<Settings>& saved) {
     // init settings
@@ -121,7 +137,7 @@ struct InterfaceManager {
       }
     } else { // if !editMode
       for (int i = 0; i < numEffects; i++) {
-        if (switches[i].FallingEdge()) { // Toggle switches
+        if (switches[i].RisingEdge()) { // Toggle switches... Pressed() or RisingEdge()?
           localSettings->toggles[i] = !localSettings->toggles[i];
         }
       }
@@ -151,19 +167,18 @@ struct InterfaceManager {
  * @brief firmware for the Jaffx pedal
  * @todo implement param callbacks
  */
-class Main : public Jaffx::Firmware {
+class MultiFxTemplate : public Jaffx::Firmware {
   PersistentStorage<Settings> mPersistentStorage{hardware.qspi}; // PersistentStorage for settings
 	Settings mSettings; // local settings 
   InterfaceManager mInterfaceManager; 
 
-  // effects 
-  std::unique_ptr<giml::Phaser<float>> mPhaser;
-  giml::AmpModeler<float, Layer1, Layer2> mAmpModeler{};
-  std::unique_ptr<giml::Chorus<float>> mChorus;
-  std::unique_ptr<giml::Tremolo<float>> mTremolo;
-  std::unique_ptr<giml::Delay<float>> mDelay;
-  std::unique_ptr<giml::Compressor<float>> mCompressor;
-  giml::EffectsLine<float> mFxChain{6};
+  //=====================================================================
+  // ADD GIMMEL EFFECTS HERE
+  // std::unique_ptr<giml::Effect<float>> mEffect;
+  // ... 
+  //=====================================================================
+  giml::EffectsLine<float> mFxChain;
+
 
   void init() override {
     hardware.StartLog();
@@ -171,45 +186,13 @@ class Main : public Jaffx::Firmware {
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
-    // ~1% CPU load
-    mTremolo = std::make_unique<giml::Tremolo<float>>(this->samplerate);
-    mTremolo->setParams();
-    mTremolo->enable();
-    mFxChain.pushBack(mTremolo.get());
-
-    // ~15% CPU load
-    mPhaser = std::make_unique<giml::Phaser<float>>(this->samplerate);
-    mPhaser->setParams();
-    mPhaser->enable();
-    mFxChain.pushBack(mPhaser.get());
-
-    // ~71% CPU load
-    mAmpModeler.loadModels();
-    mFxChain.pushBack(&mAmpModeler);
-
-    // ~3% CPU load
-    mChorus = std::make_unique<giml::Chorus<float>>(this->samplerate);
-    mChorus->setParams();
-    mChorus->enable();
-    mFxChain.pushBack(mChorus.get());
-
-    // ~2% CPU load  
-    mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
-    mDelay->setParams(398.f, 0.3f, 0.7f, 0.24f);
-    mDelay->enable();
-    mFxChain.pushBack(mDelay.get());
-
-    // ~3% CPU load
-    mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
-    mCompressor->setParams(-20.f, 4.f, 6.f, 5.f, 3.5f, 100.f);
-    mCompressor->enable();
-    mFxChain.pushBack(mCompressor.get());
-
-    // Crashes the system
-    // mReverb = std::make_unique<giml::Reverb<float>>(this->samplerate);
-		// mReverb->setParams(0.02f, 0.5f, 0.5f, 0.24f, 5.f, 0.9f); // matches AlloFx
-    // mReverb->enable();
-    // mFxChain.pushBack(mReverb.get());
+    //=====================================================================
+    // CONSTRUCT EFFECTS HERE
+    // mEffect = std::make_unique<giml::Effect<float>>(this->samplerate);
+    // mEffect->setParams();
+    // mFxChain.pushBack(mEffect.get());
+    // ...
+    //====================================================================
   }
 
   /**
@@ -219,26 +202,18 @@ class Main : public Jaffx::Firmware {
     Firmware::blockStart(); // for debug mode
     mInterfaceManager.processInput();
 
-    unsigned int numToggles = std::min(int(mFxChain.size()), mInterfaceManager.numEffects);
-    for (unsigned int i = 0; i < numToggles; i++) {
+    for (int i = 0; i < mFxChain.size(); i++) {
       mFxChain[i]->toggle(mSettings.toggles[i]);
-    }
-    if (mSettings.toggles[2]) { // if amp modeler is enabled
-      mCompressor->setParams(6.f, 1.f, 0.f, 5.f, 3.5f, 100.f);
-      mCompressor->toggle(true); // disable compressor
-    } else {
-      mCompressor->setParams(-20.f, 4.f, 6.f, 5.f, 3.5f, 100.f);
-      mCompressor->toggle(true); // enable compressor
     }
 
     // prototyping setters. TODO: Callbacks (for efficiency)
     auto& s = mSettings;
     if (mInterfaceManager.editMode) {
-      // mDetune->setParams(s.params[0][0] * 0.1 + 0.9, giml::clip<float>(10.f + s.params[0][1] * 40.f, 10.f, 50.f), s.params[0][2]);
-      // mPhaser->setParams(giml::clip<float>(s.params[1][0] * 20.f, 0.f, 20.f), giml::clip<float>(s.params[1][1] * 2 - 1, -1, 1));
-      // mDelay->setParams(1000.0 * s.params[2][0], s.params[2][1], 0.7f, s.params[2][3]);
-      // mCompressor->setParams(-s.params[3][0] * 60, s.params[3][1] * 10.f, s.params[3][2] * 20, 5.f, 3.5f, 100.f); // TODO: defaults in giml
-      // mReverb->setParams(s.params[4][0] * 0.1, s.params[4][1] * 0.3, 0.5f, s.params[4][2], 50.f, 0.9f);
+      //========================================================================
+      // Set params here
+      // mFxChain[0]->setParams(s.params[0][0], s.params[0][1], s.params[0][2]);
+      // ... 
+      //========================================================================
     }
   }
 
@@ -254,8 +229,8 @@ class Main : public Jaffx::Firmware {
 };
 
 int main() {
-  Main mMain;
-  mMain.start();
+  MultiFxTemplate mMultiFxTemplate;
+  mMultiFxTemplate.start();
   return 0;
 }
 

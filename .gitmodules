@@ -1,6 +1,9 @@
 [submodule "Gimmel"]
 	path = Gimmel
-	url = https://github.com/Mahdi03/Gimmel
+	url = https://github.com/jaffco/Gimmel
 [submodule "libDaisy"]
 	path = libDaisy
 	url = https://github.com/electro-smith/libDaisy
+[submodule "RTNeural"]
+	path = RTNeural
+	url = https://github.com/joeljaffesd/RTNeural
