@@ -159,23 +159,17 @@ class Main : public Jaffx::Firmware {
   // effects 
   std::unique_ptr<giml::Phaser<float>> mPhaser;
   giml::AmpModeler<float, Layer1, Layer2> mAmpModeler{};
+  std::unique_ptr<giml::Expander<float>> mExpander;
   std::unique_ptr<giml::Chorus<float>> mChorus;
-  std::unique_ptr<giml::Tremolo<float>> mTremolo;
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Compressor<float>> mCompressor;
   giml::EffectsLine<float> mFxChain{6};
 
   void init() override {
     hardware.StartLog();
-    this->debug = true;
+    // this->debug = true;
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
-
-    // ~1% CPU load
-    mTremolo = std::make_unique<giml::Tremolo<float>>(this->samplerate);
-    mTremolo->setParams();
-    mTremolo->enable();
-    mFxChain.pushBack(mTremolo.get());
 
     // ~15% CPU load
     mPhaser = std::make_unique<giml::Phaser<float>>(this->samplerate);
@@ -186,6 +180,12 @@ class Main : public Jaffx::Firmware {
     // ~71% CPU load
     mAmpModeler.loadModels();
     mFxChain.pushBack(&mAmpModeler);
+
+    mExpander = std::make_unique<giml::Expander<float>>(this->samplerate);
+    mExpander->setParams(-50.f, 4.f, 5.f);
+    mExpander->enable();
+    mExpander->toggleSideChain(true);
+    mFxChain.pushBack(mExpander.get());
 
     // ~3% CPU load
     mChorus = std::make_unique<giml::Chorus<float>>(this->samplerate);
@@ -201,7 +201,7 @@ class Main : public Jaffx::Firmware {
 
     // ~3% CPU load
     mCompressor = std::make_unique<giml::Compressor<float>>(this->samplerate);
-    mCompressor->setParams(-20.f, 4.f, 6.f, 5.f, 3.5f, 100.f);
+    mCompressor->setParams(-20.f, 4.f, 10.f, 5.f, 3.5f, 100.f);
     mCompressor->enable();
     mFxChain.pushBack(mCompressor.get());
 
@@ -219,19 +219,27 @@ class Main : public Jaffx::Firmware {
     Firmware::blockStart(); // for debug mode
     mInterfaceManager.processInput();
 
-    unsigned int numToggles = std::min(int(mFxChain.size()), mInterfaceManager.numEffects);
-    for (unsigned int i = 0; i < numToggles; i++) {
-      mFxChain[i]->toggle(mSettings.toggles[i]);
-    }
-    if (mSettings.toggles[2]) { // if amp modeler is enabled
-      mCompressor->setParams(6.f, 1.f, 0.f, 5.f, 3.5f, 100.f);
-      mCompressor->toggle(true); // disable compressor
+    // toggle fx
+    // unsigned int numToggles = std::min(int(mFxChain.size()), mInterfaceManager.numEffects);
+    // for (unsigned int i = 0; i < numToggles; i++) {
+    //   mFxChain[i]->toggle(mSettings.toggles[i]);
+    // }
+    mFxChain[0]->toggle(mSettings.toggles[0]);
+    mFxChain[1]->toggle(mSettings.toggles[1]);
+    // skip expander
+    mFxChain[3]->toggle(mSettings.toggles[2]);
+    mFxChain[4]->toggle(mSettings.toggles[3]);
+    // skip compressor
+
+    if (mSettings.toggles[1]) { // if amp modeler is enabled
+      mCompressor->disable(); // disable compressor
+      mExpander->toggle(mSettings.toggles[4]);
     } else {
-      mCompressor->setParams(-20.f, 4.f, 6.f, 5.f, 3.5f, 100.f);
-      mCompressor->toggle(true); // enable compressor
+      mExpander->disable();
+      mCompressor->toggle(mSettings.toggles[4]);
     }
 
-    // prototyping setters. TODO: Callbacks (for efficiency)
+    // prototyping setters. TODO: Interrupt Callbacks (for efficiency)
     auto& s = mSettings;
     if (mInterfaceManager.editMode) {
       // mDetune->setParams(s.params[0][0] * 0.1 + 0.9, giml::clip<float>(10.f + s.params[0][1] * 40.f, 10.f, 50.f), s.params[0][2]);
@@ -243,6 +251,7 @@ class Main : public Jaffx::Firmware {
   }
 
   float processAudio(float in) override {
+    mExpander->feedSideChain(in);
     return mFxChain.processSample(in);
   }
   

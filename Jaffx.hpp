@@ -20,10 +20,6 @@ namespace giml {
 		return arm_cos_f32(x); 
 	}
 
-	inline float pow(float base, float power) { 
-		return arm_exponent_f32(base, power); 
-	}
-
 }
 
 namespace Jaffx {

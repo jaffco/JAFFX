@@ -27,11 +27,11 @@ namespace giml {
   };
 }
 
-  //=====================================================================
-  // ADD USER-DEFINED DECLARATIONS AND DEFINITIONS HERE
-  // class UserDefinedEffect : public Effect<float> {};
-  // ... 
-  //=====================================================================
+//=====================================================================
+// ADD USER DEFINITIONS HERE
+// class UserDefinedEffect : public Effect<float> {};
+// ... 
+//=====================================================================
 
 /**
  * @brief Settings struct for writing and recalling settings
@@ -181,8 +181,6 @@ class MultiFxTemplate : public Jaffx::Firmware {
 
 
   void init() override {
-    hardware.StartLog();
-    this->debug = true;
     mPersistentStorage.Init(mSettings);
     mInterfaceManager.init(mSettings, mPersistentStorage);
 
