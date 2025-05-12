@@ -105,9 +105,10 @@ struct InterfaceManager {
     leds[4].Init(seed::D4, GPIO::Mode::OUTPUT);  
     encoders[0].Init(seed::D21, seed::D20, seed::D22);
     encoders[1].Init(seed::D23, seed::D24, seed::D22);
-    encoders[2].Init(seed::D25, seed::D26, seed::D22);
+    encoders[2].Init(seed::D26, seed::D25, seed::D22); // fixed: this was originally backwards
     encoders[3].Init(seed::D27, seed::D28, seed::D22);
   }
+  bool editModeToggled = false;
 
   void processInput() {
     // debounce encoders and switches
@@ -118,6 +119,15 @@ struct InterfaceManager {
     if (switches[0].TimeHeldMs() > 500.f) { 
       System::ResetToBootloader(System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
     }
+
+
+    if (switches[4].TimeHeldMs() > 500.f && !editModeToggled) { 
+      editMode = !editMode; // flip state
+      editModeToggled = true; // prevent multiple toggles 
+      if (!editMode) { saveSettings(); } // if exiting edit mode, save settings
+    }
+
+    if (!switches[4].Pressed()) { editModeToggled = false; } // reset toggle state
     
     // check encoder[0] for edit mode. 
     // `RisingEdge()` triggers at boot, `FallingEdge()` preferred
@@ -136,20 +146,37 @@ struct InterfaceManager {
         // TODO: encapsulate clamping in a param class^
       }
     } else { // if !editMode
-      for (int i = 0; i < numEffects; i++) {
+      
+    }
+    for (int i = 0; i < numEffects; i++) {
         if (switches[i].RisingEdge()) { // Toggle switches... Pressed() or RisingEdge()?
           localSettings->toggles[i] = !localSettings->toggles[i];
         }
       }
-    }
   }
 
   void processOutput() {
     for (int i = 0; i < numEffects; i++) { // for each led
-      if (editMode) { // if editMode, light selected
-        if (i == select && !leds[i].Read()) { leds[i].Write(true); } 
-        else { leds[i].Write(false); }
-      } else { leds[i].Write(localSettings->toggles[i]); } // if !editMode, show toggle state
+      // if (editMode) { // if editMode, light selected
+      //   if (i == select && !leds[i].Read()) { leds[i].Write(true); } 
+      //   else { leds[i].Write(false); }
+      // } else { leds[i].Write(localSettings->toggles[i]); } // if !editMode, show toggle state
+
+
+
+      // Be able to toggle switches and play while in edit mode:
+      bool ledState = localSettings->toggles[i];
+      if (editMode) {
+        if (i == select) {
+          // Ignore the ledState and just toggle it
+          if (leds[i].Read()) { leds[i].Write(false); } 
+          else { leds[i].Write(true); }
+        }
+        else { // if not selected, show toggle state
+          if (leds[i].Read() != ledState) { leds[i].Write(ledState); }
+        }
+      }
+      else { leds[i].Write(localSettings->toggles[i]); }
     } 
   }
 
