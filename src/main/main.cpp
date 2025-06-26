@@ -2,16 +2,16 @@
 #include "../../Gimmel/include/gimmel.hpp"
 #include <memory> // for unique_ptr && make_unique
 
-#include "../namTest/FenderModel.h"
+#include "../namTest/DumbleModel.h"
 #include "../namTest/MarshallModel.h"
 
 // Add NAM compatibility to giml
 namespace giml {
-  template<typename T, typename Layer1, typename Layer2>
+  template <typename T, typename Layer1, typename Layer2>
   class AmpModeler : public Effect<T> {
   private:
     wavenet::RTWavenet<1, 1, Layer1, Layer2> clean, dirty;
-    FenderModelWeights cleanWeights;
+    DumbleModelWeights cleanWeights;
     MarshallModelWeights dirtyWeights;
 
   public:
@@ -177,7 +177,7 @@ class Main : public Jaffx::Firmware {
     mPhaser->enable();
     mFxChain.pushBack(mPhaser.get());
 
-    // ~71% CPU load
+    // ~71% CPU load`
     mAmpModeler.loadModels();
     mFxChain.pushBack(&mAmpModeler);
 
@@ -189,7 +189,7 @@ class Main : public Jaffx::Firmware {
 
     // ~3% CPU load
     mChorus = std::make_unique<giml::Chorus<float>>(this->samplerate);
-    mChorus->setParams();
+    mChorus->setParams(0.2, 10.f);
     mChorus->enable();
     mFxChain.pushBack(mChorus.get());
 
@@ -240,7 +240,7 @@ class Main : public Jaffx::Firmware {
     }
 
     // prototyping setters. TODO: Interrupt Callbacks (for efficiency)
-    auto& s = mSettings;
+    // auto& s = mSettings;
     if (mInterfaceManager.editMode) {
       // mDetune->setParams(s.params[0][0] * 0.1 + 0.9, giml::clip<float>(10.f + s.params[0][1] * 40.f, 10.f, 50.f), s.params[0][2]);
       // mPhaser->setParams(giml::clip<float>(s.params[1][0] * 20.f, 0.f, 20.f), giml::clip<float>(s.params[1][1] * 2 - 1, -1, 1));
@@ -257,7 +257,7 @@ class Main : public Jaffx::Firmware {
   
   void loop() override {
     mInterfaceManager.processOutput();
-    System::Delay(25); // what's a good value?
+    System::Delay(50); // what's a good value?
   }
 
 };

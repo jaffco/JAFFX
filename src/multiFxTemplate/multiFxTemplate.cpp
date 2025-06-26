@@ -2,16 +2,16 @@
 #include "../../Gimmel/include/gimmel.hpp"
 #include <memory> // for unique_ptr && make_unique
 
-#include "../namTest/FenderModel.h"
+#include "../namTest/DumbleModel.h"
 #include "../namTest/MarshallModel.h"
 
 // Add NAM compatibility to giml
 namespace giml {
-  template<typename T, typename Layer1, typename Layer2>
+  template <typename T, typename Layer1, typename Layer2>
   class AmpModeler : public Effect<T> {
   private:
     wavenet::RTWavenet<1, 1, Layer1, Layer2> clean, dirty;
-    FenderModelWeights cleanWeights;
+    DumbleModelWeights cleanWeights;
     MarshallModelWeights dirtyWeights;
 
   public:
