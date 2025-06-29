@@ -1,0 +1,59 @@
+name: JAFFX Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jaffx-build:
+    runs-on: ubuntu-22.04
+    name: "JAFFX build"
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install ARM GCC Toolchain
+      run: |
+        # Install ARM GCC toolchain
+        curl -LO https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2
+        tar -xjf gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2 -C /opt
+        sudo ln -s /opt/gcc-arm-none-eabi-10-2020-q4-major/bin/* /usr/local/bin
+        rm gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2
+        
+        # Verify toolchain installation
+        arm-none-eabi-gcc --version
+    
+    - name: Initialize JAFFX repository
+      run: |
+        ./init.sh
+
+    - name: Build all JAFFX examples
+      run: |
+        echo "Building all examples in src/ directory:"
+        
+        # Find all directories in src/ that contain Makefiles
+        for example_dir in src/*/; do
+          if [ -f "${example_dir}Makefile" ]; then
+            example_name=$(basename "$example_dir")
+            echo "Building example: $example_name"
+            
+            cd "$example_dir"
+            if make clean && make; then
+              echo "✅ Successfully built $example_name"
+            else
+              echo "❌ Failed to build $example_name"
+              exit 1
+            fi
+            cd - > /dev/null
+          fi
+        done
+        
+        echo "All examples built successfully!"
+      shell: bash
