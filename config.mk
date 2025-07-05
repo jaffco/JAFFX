@@ -1,0 +1,50 @@
+# Get the directory where this config.mk file is located
+CONFIG_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+
+# Library Locations (allow environment override)
+LIBDAISY_DIR ?= $(CONFIG_DIR)libDaisy
+RTNEURAL_DIR ?= $(CONFIG_DIR)RTNeural
+GIMMEL_DIR ?= $(CONFIG_DIR)Gimmel
+
+# Normalize paths for cross-platform compatibility
+normalize_path = $(subst \,/,$(1))
+LIBDAISY_DIR := $(call normalize_path,$(LIBDAISY_DIR))
+RTNEURAL_DIR := $(call normalize_path,$(RTNEURAL_DIR))
+GIMMEL_DIR := $(call normalize_path,$(GIMMEL_DIR))
+
+# Verify critical directories exist
+$(if $(wildcard $(LIBDAISY_DIR)),,$(error libDaisy directory not found at $(LIBDAISY_DIR)))
+$(if $(wildcard $(RTNEURAL_DIR)),,$(error RTNeural directory not found at $(RTNEURAL_DIR)))
+
+# Define subdirectories
+CMSIS_DSP_DIR := $(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source
+SYSTEM_FILES_DIR := $(LIBDAISY_DIR)/core
+
+# CMSIS-DSP sources
+C_SOURCES := \
+$(CMSIS_DSP_DIR)/FastMathFunctions/arm_sin_f32.c \
+$(CMSIS_DSP_DIR)/FastMathFunctions/arm_cos_f32.c \
+$(CMSIS_DSP_DIR)/ControllerFunctions/arm_sin_cos_f32.c \
+$(CMSIS_DSP_DIR)/CommonTables/arm_common_tables.c
+
+# Core location, and generic makefile.
+include $(SYSTEM_FILES_DIR)/Makefile
+
+# Includes and flags for RTNeural
+C_INCLUDES += -I$(RTNEURAL_DIR)
+C_INCLUDES += -I$(RTNEURAL_DIR)/modules/Eigen
+C_INCLUDES += -I$(RTNEURAL_DIR)/modules/rt-nam
+
+# Gimmel includes
+C_INCLUDES += -I$(GIMMEL_DIR)/include
+
+# RTNeural compiler flags
+CPPFLAGS += -DRTNEURAL_DEFAULT_ALIGNMENT=8 -DRTNEURAL_NO_DEBUG=1 -DRTNEURAL_USE_EIGEN=1
+
+# Debug information (can be disabled by setting VERBOSE=0)
+ifneq ($(VERBOSE),0)
+$(info CONFIG_DIR: $(CONFIG_DIR))
+$(info LIBDAISY_DIR: $(LIBDAISY_DIR))
+$(info RTNEURAL_DIR: $(RTNEURAL_DIR))
+$(info GIMMEL_DIR: $(GIMMEL_DIR))
+endif
