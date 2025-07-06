@@ -1,0 +1,123 @@
+name: Cross-Platform Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-platform-build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: "Linux"
+            toolchain_url: "https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-x86_64-linux.tar.bz2"
+            toolchain_dir: "gcc-arm-none-eabi-10-2020-q4-major"
+            extract_cmd: "tar -xjf"
+            install_deps: "sudo apt-get update && sudo apt-get install -y make bash curl bzip2 git"
+          - os: macos-latest
+            name: "macOS"
+            toolchain_url: "https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-mac.tar.bz2"
+            toolchain_dir: "gcc-arm-none-eabi-10-2020-q4-major"
+            extract_cmd: "tar -xjf"
+            install_deps: "brew install make bash curl"
+          - os: windows-latest
+            name: "Windows"
+            toolchain_url: "https://developer.arm.com/-/media/Files/downloads/gnu-rm/10-2020q4/gcc-arm-none-eabi-10-2020-q4-major-win32.zip"
+            toolchain_dir: "gcc-arm-none-eabi-10-2020-q4-major"
+            extract_cmd: "unzip -q"
+            install_deps: "choco install make"
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    name: "Cross-Platform Build (${{ matrix.name }})"
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install build dependencies
+      run: |
+        ${{ matrix.install_deps }}
+      shell: bash
+    
+    - name: Install ARM GCC Toolchain
+      run: |
+        # Download ARM GCC toolchain
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          curl -LO "${{ matrix.toolchain_url }}"
+          ${{ matrix.extract_cmd }} "$(basename "${{ matrix.toolchain_url }}")" -d /c/
+          # Add to GitHub PATH for future steps
+          echo "/c/${{ matrix.toolchain_dir }}/bin" >> $GITHUB_PATH
+          echo "C:\\${{ matrix.toolchain_dir }}\\bin" >> $GITHUB_PATH
+          # Set PATH for current step verification
+          export PATH="/c/${{ matrix.toolchain_dir }}/bin:$PATH"
+          rm "$(basename "${{ matrix.toolchain_url }}")"
+        else
+          curl -LO "${{ matrix.toolchain_url }}"
+          sudo mkdir -p /opt
+          sudo ${{ matrix.extract_cmd }} "$(basename "${{ matrix.toolchain_url }}")" -C /opt
+          sudo ln -sf /opt/${{ matrix.toolchain_dir }}/bin/* /usr/local/bin
+          rm "$(basename "${{ matrix.toolchain_url }}")"
+        fi
+        
+        # Verify toolchain installation
+        arm-none-eabi-gcc --version
+      shell: bash
+    
+    - name: Initialize JAFFX repository
+      run: |
+        # Make init.sh executable (important for Windows and some Unix systems)
+        chmod +x init.sh
+        ./init.sh
+      shell: bash
+
+    - name: Build all JAFFX examples
+      run: |
+        echo "Building all examples in src/ directory:"
+        
+        # Ensure ARM GCC is in PATH for Windows
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          export PATH="/c/${{ matrix.toolchain_dir }}/bin:$PATH"
+          MAKE_CMD="mingw32-make.exe"
+          # Fall back to make if mingw32-make is not available
+          if ! command -v $MAKE_CMD &> /dev/null; then
+            MAKE_CMD="make"
+          fi
+        else
+          MAKE_CMD="make"
+        fi
+        
+        echo "Using make command: $MAKE_CMD"
+        echo "ARM GCC location: $(which arm-none-eabi-gcc)"
+        
+        # Find all directories in src/ that contain Makefiles
+        BUILD_FAILED=false
+        for example_dir in src/*/; do
+          if [ -f "${example_dir}Makefile" ]; then
+            example_name=$(basename "$example_dir")
+            echo "Building example: $example_name"
+            
+            cd "$example_dir"
+            if $MAKE_CMD clean && $MAKE_CMD; then
+              echo "✅ Successfully built $example_name"
+            else
+              echo "❌ Failed to build $example_name"
+              BUILD_FAILED=true
+            fi
+            cd - > /dev/null
+          fi
+        done
+        
+        if [ "$BUILD_FAILED" = true ]; then
+          echo "❌ One or more builds failed!"
+          exit 1
+        fi
+        
+        echo "All examples built successfully!"
+      shell: bash
