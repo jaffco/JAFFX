@@ -2,15 +2,16 @@
 #include "dev/oled_ssd130x.h"
 #include "util/oled_fonts.h"
 
+using DisplayType = daisy::OledDisplay<daisy::SSD130x4WireSpi128x32Driver>;
 
 class Display : public Jaffx::Firmware {
-  daisy::OledDisplay<daisy::SSD130x4WireSpi128x32Driver> mDisplay;
+  DisplayType mDisplay;
   unsigned mPhase = 0; // Initialize phase counter
   bool screenState = false;
   bool lastScreenState = false;
 
   void init() override {
-    daisy::OledDisplay<daisy::SSD130x4WireSpi128x32Driver>::Config disp_cfg;
+    DisplayType::Config disp_cfg;
     disp_cfg.driver_config.transport_config.pin_config.dc = seed::D9;
     disp_cfg.driver_config.transport_config.pin_config.reset = seed::D11;
     mDisplay.Init(disp_cfg);
