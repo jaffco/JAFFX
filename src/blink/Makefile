@@ -5,5 +5,5 @@ TARGET = blink
 CPP_SOURCES = blink.cpp
 
 # Library Locations
-include ../../config.mk
+include ../../common.mk
 

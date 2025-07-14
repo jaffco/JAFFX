@@ -4,6 +4,6 @@ TARGET = display
 # Sources
 CPP_SOURCES = display.cpp
 
-include ../../config.mk
+include ../../common.mk
 
 

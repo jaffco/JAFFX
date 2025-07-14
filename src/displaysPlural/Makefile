@@ -4,5 +4,5 @@ TARGET = displaysPlural
 # Sources
 CPP_SOURCES = displaysPlural.cpp
 
-include ../../config.mk
+include ../../common.mk
 

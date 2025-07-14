@@ -4,4 +4,4 @@ TARGET = oscillator
 # Sources
 CPP_SOURCES = oscillator.cpp
 
-include ../../config.mk
+include ../../common.mk

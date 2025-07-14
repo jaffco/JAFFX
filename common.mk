@@ -1,4 +1,4 @@
-# Get the directory where this config.mk file is located
+# Get the directory where this common.mk file is located
 CONFIG_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 # Library Locations (allow environment override)

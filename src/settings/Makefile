@@ -4,5 +4,5 @@ TARGET = settings
 # Sources
 CPP_SOURCES = settings.cpp
 
-include ../../config.mk
+include ../../common.mk
 

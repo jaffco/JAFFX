@@ -7,4 +7,4 @@ APP_TYPE = BOOT_SRAM
 # Sources
 CPP_SOURCES = bootloader.cpp
 
-include ../../config.mk
+include ../../common.mk

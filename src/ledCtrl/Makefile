@@ -4,5 +4,5 @@ TARGET = ledCtrl
 # Sources
 CPP_SOURCES = ledCtrl.cpp
 
-include ../../config.mk
+include ../../common.mk
 

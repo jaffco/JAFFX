@@ -4,5 +4,5 @@ TARGET = irTest
 # Sources
 CPP_SOURCES = irTest.cpp
 
-include ../../config.mk
+include ../../common.mk
 

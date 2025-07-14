@@ -16,4 +16,4 @@ BOOT_BIN = $(SYSTEM_FILES_DIR)/dsy_bootloader_v6_2-intdfu-10ms.bin
 # Sources
 CPP_SOURCES = main.cpp
 
-include ../../config.mk
+include ../../common.mk

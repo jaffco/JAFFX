@@ -7,5 +7,5 @@ CPP_SOURCES = gimmelTests.cpp
 # Set App Type
 APP_TYPE = BOOT_SRAM
 
-include ../../config.mk
+include ../../common.mk
 
