@@ -30,35 +30,45 @@ def generate_project(project_name):
     # Create new project directory
     os.makedirs(new_project_dir)
     
-    # Rename files
+    # Copy and rename files (excluding build directory)
     for filename in os.listdir(template_dir):
+        src_path = os.path.join(template_dir, filename)
+        
+        # Skip directories (especially build directory which contains artifacts)
+        if os.path.isdir(src_path):
+            print(f"Skipping directory: {filename}")
+            continue
+        
         # Replace 'template' in filename
         new_filename = filename.replace('template', project_name)
-        
-        # Copy file with new name
-        src_path = os.path.join(template_dir, filename)
         dst_path = os.path.join(new_project_dir, new_filename)
         
+        # Copy file with new name
         shutil.copy2(src_path, dst_path)
         
-        # Read and replace contents
-        with open(dst_path, 'r') as f:
-            content = f.read()
-        
-        # Replace class name
-        # First letter capitalized version of project name
-        class_name = project_name[0].upper() + project_name[1:]
-        
-        # Replace variations
-        content = re.sub(r'\bTemplate\b', class_name, content)
-        content = re.sub(r'\btemplate\b', project_name, content)
-        
-        # Replace instance variable if needed
-        content = re.sub(r'm(T|t)emplate', f'm{class_name}', content)
-        
-        # Write modified content back
-        with open(dst_path, 'w') as f:
-            f.write(content)
+        # Read and replace contents for text files
+        try:
+            with open(dst_path, 'r') as f:
+                content = f.read()
+            
+            # Replace class name
+            # First letter capitalized version of project name
+            class_name = project_name[0].upper() + project_name[1:]
+            
+            # Replace variations
+            content = re.sub(r'\bTemplate\b', class_name, content)
+            content = re.sub(r'\btemplate\b', project_name, content)
+            
+            # Replace instance variable if needed
+            content = re.sub(r'm(T|t)emplate', f'm{class_name}', content)
+            
+            # Write modified content back
+            with open(dst_path, 'w') as f:
+                f.write(content)
+                
+        except UnicodeDecodeError:
+            # File is likely binary, skip content replacement
+            print(f"Skipping content replacement for binary file: {new_filename}")
     
     print(f"Project '{project_name}' has been created in '{new_project_dir}'.")
 
