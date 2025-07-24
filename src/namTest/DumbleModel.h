@@ -7,7 +7,7 @@ Usage:
 #include "model.h"
 
 class MyAudioApp {
-  ModelWeights weights;
+  DumbleModelWeights weights;
   unsigned int ioChannels = 1, samplesPerBuffer = 1;
   wavenet::RTWavenet<ioChannels, 
                      samplesPerBuffer, 
@@ -16,12 +16,13 @@ class MyAudioApp {
     model;
 
   float myAudioCallback(float inputSample) {
-    return model.model.forward(inputSample);
+    return model.forward(inputSample);
   }
 };
 
 */
-    
+
+#pragma once
 #include <vector>
 #include "rt-nam.hpp"
 
