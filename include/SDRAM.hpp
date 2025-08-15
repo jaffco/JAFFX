@@ -12,32 +12,32 @@ namespace Jaffx {
 #endif
 
 // singleton class for managing SDRAM throughout a program's lifecycle
-class MyMalloc {
+class SDRAM {
 private:
   byte* pBackingMemory = (byte*)DAISY_SDRAM_BASE_ADDR;
 
   //Bookkeeping struct
   typedef struct metadata_stc {
-    struct MyMalloc::metadata_stc* next;
-    struct MyMalloc::metadata_stc* prev;
+    struct SDRAM::metadata_stc* next;
+    struct SDRAM::metadata_stc* prev;
     unsigned int size;
     bool allocatedOrNot;
     byte* buffer;
   } metadata;
 
-  MyMalloc::metadata* freeSectionsListHeadPointer;
+  SDRAM::metadata* freeSectionsListHeadPointer;
 
 public:
-  MyMalloc() {}
+  SDRAM() {}
   //constructor
-  void MyMallocInit() {
+  void init() {
     //Actually initialize the 24-byte struct at the beginning - careful as this might segfault later when `initialStruct` goes out of scope
-    MyMalloc::metadata initialStruct;
+    SDRAM::metadata initialStruct;
     initialStruct.next = nullptr;
     initialStruct.prev = nullptr;
-    initialStruct.size = DAISY_SDRAM_SIZE - sizeof(MyMalloc::metadata);
+    initialStruct.size = DAISY_SDRAM_SIZE - sizeof(SDRAM::metadata);
     initialStruct.allocatedOrNot = false;
-    initialStruct.buffer = (byte*)(&(this->pBackingMemory[0]) + sizeof(MyMalloc::metadata));
+    initialStruct.buffer = (byte*)(&(this->pBackingMemory[0]) + sizeof(SDRAM::metadata));
 
     // Putting initial struct into start of BigBuffer so it is accessible outside this scope and we can avoid segfaults
     storeMetadataStructInBigBuffer(this->pBackingMemory, initialStruct);
@@ -46,9 +46,9 @@ public:
   }
 
   //Have copy & copy-assignment constructors disabled to enforce singleton as only instance
-  MyMalloc(const MyMalloc&) = delete;
-  void operator=(const MyMalloc&) = delete;
-  ~MyMalloc() {} // Don't need a destructor because all memory will be zero-filled on init
+  SDRAM(const SDRAM&) = delete;
+  void operator=(const SDRAM&) = delete;
+  ~SDRAM() {} // Don't need a destructor because all memory will be zero-filled on init
 
 private:
   /*******************************Helper functions*************************/
@@ -76,7 +76,7 @@ private:
     // Check pointer bounds to ensure that the requested read pointer is within the BigBuffer
     // TODO: Alert or maybe serial print somehow
     if (!pointerInMemoryRange(pBufferPos)) { return; }
-    MyMalloc::metadata* pMetadataStruct = (MyMalloc::metadata*)pBufferPos;
+    SDRAM::metadata* pMetadataStruct = (SDRAM::metadata*)pBufferPos;
     *pMetadataStruct = inputMetadata; 
   }
 
@@ -86,13 +86,13 @@ private:
    * @param pBufferPos The position from which to retrieve the `metadata` struct
    * @return The `metadata` struct found at the given position in `BigBuffer`
    */
-  MyMalloc::metadata getMetadataStructInBigBuffer(byte* pBufferPos) {
+  SDRAM::metadata getMetadataStructInBigBuffer(byte* pBufferPos) {
     // Check pointer bounds to ensure that the requested read pointer is within the BigBuffer
     if (!pointerInMemoryRange(pBufferPos)) {
       //TODO: Alert or maybe serial print somehow
-      return *((MyMalloc::metadata*) nullptr); //TODO: This violently fails, maybe return an empty or destroyed one
+      return *((SDRAM::metadata*) nullptr); //TODO: This violently fails, maybe return an empty or destroyed one
     }
-    MyMalloc::metadata pMetadataStruct = *((MyMalloc::metadata*)pBufferPos);
+    SDRAM::metadata pMetadataStruct = *((SDRAM::metadata*)pBufferPos);
     return pMetadataStruct;
   }
   /************************************************************************/
@@ -119,7 +119,7 @@ public:
     if (actualSize == 0) return nullptr;
 
     //Loop through all the values in the list of "free" sections and find the first one that has enough room
-    MyMalloc::metadata* freeStruct = this->freeSectionsListHeadPointer;
+    SDRAM::metadata* freeStruct = this->freeSectionsListHeadPointer;
     /*
     TODO: For now, the hijacking policy is to first fill up a larger empty space and THEN, if we don't find anything that
     will fit, iterate through once again to try and hijack an entire space
@@ -130,17 +130,17 @@ public:
     Later on, we should know to hijack the 64 and look no further because we leave a much larger space
     */
     while (freeStruct != nullptr) {
-      if (freeStruct->size >= (actualSize + sizeof(MyMalloc::metadata))) {
+      if (freeStruct->size >= (actualSize + sizeof(SDRAM::metadata))) {
         // Initializing new struct for new free space
-        MyMalloc::metadata newFreeStruct;
+        SDRAM::metadata newFreeStruct;
         newFreeStruct.next = freeStruct->next;
         newFreeStruct.prev = freeStruct->prev;
-        newFreeStruct.size = freeStruct->size - actualSize - sizeof(MyMalloc::metadata);
+        newFreeStruct.size = freeStruct->size - actualSize - sizeof(SDRAM::metadata);
         newFreeStruct.allocatedOrNot = false;
-        newFreeStruct.buffer = freeStruct->buffer + actualSize + sizeof(MyMalloc::metadata);
+        newFreeStruct.buffer = freeStruct->buffer + actualSize + sizeof(SDRAM::metadata);
 
         // Initializing pointer to space in DRAM (old buffer + requested space)
-        MyMalloc::metadata* pBufferNewFreeStruct = (MyMalloc::metadata*)(freeStruct->buffer + actualSize);
+        SDRAM::metadata* pBufferNewFreeStruct = (SDRAM::metadata*)(freeStruct->buffer + actualSize);
         this->storeMetadataStructInBigBuffer((byte*)pBufferNewFreeStruct, newFreeStruct);
 
         // Adjusting pointers to point to new free space
@@ -203,7 +203,7 @@ public:
    */
   void* calloc(size_t numElements, size_t size) {
     size_t arrSizeInBytes = numElements * size;
-    void* returnVal = MyMalloc::malloc(arrSizeInBytes);
+    void* returnVal = SDRAM::malloc(arrSizeInBytes);
     if (returnVal) {
       //This means the `malloc` successfully worked, we just need to zero-fill the entire buffer now
       ::memset(returnVal, 0, arrSizeInBytes);
@@ -233,8 +233,8 @@ public:
     }
 
     // Retrieve metadata of the current block
-    MyMalloc::metadata* pCurrentMetadata = (MyMalloc::metadata*)((byte*)ptr - sizeof(MyMalloc::metadata));
-    MyMalloc::metadata currentMetadata = this->getMetadataStructInBigBuffer((byte*)pCurrentMetadata);
+    SDRAM::metadata* pCurrentMetadata = (SDRAM::metadata*)((byte*)ptr - sizeof(SDRAM::metadata));
+    SDRAM::metadata currentMetadata = this->getMetadataStructInBigBuffer((byte*)pCurrentMetadata);
 
     if (size <= currentMetadata.size) { // If new size is smaller or equal to current size, truncate the block
         unsigned int adjustedNewSize = this->round8Align(size);
@@ -242,17 +242,17 @@ public:
           //remainingSize is how much overall space is leftover within our allocated block (including any space for metadata)
           unsigned int remainingSize = currentMetadata.size - adjustedNewSize;
 
-          if (remainingSize >= sizeof(MyMalloc::metadata)) { //This means we can fit a new free block in the remaining space
+          if (remainingSize >= sizeof(SDRAM::metadata)) { //This means we can fit a new free block in the remaining space
             // Create a new free block with the remaining space - fudge it as full so that free goes ahead and frees it
-            MyMalloc::metadata* pNewFreeBlock = (MyMalloc::metadata*)(pCurrentMetadata->buffer + adjustedNewSize);
+            SDRAM::metadata* pNewFreeBlock = (SDRAM::metadata*)(pCurrentMetadata->buffer + adjustedNewSize);
             
-            MyMalloc::metadata newFreeBlock;
-            newFreeBlock.size = remainingSize - sizeof(MyMalloc::metadata);
+            SDRAM::metadata newFreeBlock;
+            newFreeBlock.size = remainingSize - sizeof(SDRAM::metadata);
             //These pointers will automatically be filled in by free()
             newFreeBlock.next = nullptr;
             newFreeBlock.prev = nullptr;
             newFreeBlock.allocatedOrNot = true; //Set true so that free() runs on it
-            newFreeBlock.buffer = (byte*)pNewFreeBlock + sizeof(MyMalloc::metadata);
+            newFreeBlock.buffer = (byte*)pNewFreeBlock + sizeof(SDRAM::metadata);
             
             this->storeMetadataStructInBigBuffer((byte*)pNewFreeBlock, newFreeBlock);
 
@@ -270,24 +270,24 @@ public:
       unsigned int additionalRequiredSize = this->round8Align(size - currentMetadata.size);
       //First we search for the next forward-adjacent free block
       //We are guaranteed by correctness that the next address after this allocated section represents a valid metadata obj if it falls within the bounds of our SDRAM
-      MyMalloc::metadata* pNextForwardAdjacentMetadata = (MyMalloc::metadata*)((byte*)ptr + currentMetadata.size);
+      SDRAM::metadata* pNextForwardAdjacentMetadata = (SDRAM::metadata*)((byte*)ptr + currentMetadata.size);
       if (this->pointerInMemoryRange((byte*)pNextForwardAdjacentMetadata) && !(pNextForwardAdjacentMetadata->allocatedOrNot)) {
         //Then the forward-adjacent block is free and we can either split it or hijack it entirely
-        unsigned int totalAvailableSizeInAdjFreeBlock = pNextForwardAdjacentMetadata->size + sizeof(MyMalloc::metadata);
+        unsigned int totalAvailableSizeInAdjFreeBlock = pNextForwardAdjacentMetadata->size + sizeof(SDRAM::metadata);
           if (totalAvailableSizeInAdjFreeBlock >= additionalRequiredSize) {
             //This means we will be able to stretch our current allocation
-            if (totalAvailableSizeInAdjFreeBlock >= additionalRequiredSize + sizeof(MyMalloc::metadata)) {
+            if (totalAvailableSizeInAdjFreeBlock >= additionalRequiredSize + sizeof(SDRAM::metadata)) {
               //This means we can fit the entire 8-aligned extra space and still fit a free block (we'll call coalesce)
               // Split the forward-adjacent block
-              MyMalloc::metadata newFreeBlock;
-              newFreeBlock.size = totalAvailableSizeInAdjFreeBlock - additionalRequiredSize - sizeof(MyMalloc::metadata); // Remaining space after split
+              SDRAM::metadata newFreeBlock;
+              newFreeBlock.size = totalAvailableSizeInAdjFreeBlock - additionalRequiredSize - sizeof(SDRAM::metadata); // Remaining space after split
               newFreeBlock.next = pNextForwardAdjacentMetadata->next;
               newFreeBlock.prev = pNextForwardAdjacentMetadata->prev;
               newFreeBlock.allocatedOrNot = false;
               newFreeBlock.buffer = pNextForwardAdjacentMetadata->buffer + additionalRequiredSize;
 
               // Store the new free block metadata
-              MyMalloc::metadata* pNewFreeBlock = (MyMalloc::metadata*)((byte*)newFreeBlock.buffer - sizeof(MyMalloc::metadata));
+              SDRAM::metadata* pNewFreeBlock = (SDRAM::metadata*)((byte*)newFreeBlock.buffer - sizeof(SDRAM::metadata));
               this->storeMetadataStructInBigBuffer((byte*)pNewFreeBlock, newFreeBlock);
 
               // Now update the neighboring free blocks to point to this one instead of the old one
@@ -348,16 +348,16 @@ private:
    */
   bool coalesceFreeSpaces() {
     bool returnVal = false;
-    MyMalloc::metadata* pCurrentStruct = this->freeSectionsListHeadPointer;
+    SDRAM::metadata* pCurrentStruct = this->freeSectionsListHeadPointer;
     if (pCurrentStruct == nullptr) {
       return returnVal;
     }
-    MyMalloc::metadata* pNextStruct = pCurrentStruct->next;
+    SDRAM::metadata* pNextStruct = pCurrentStruct->next;
     while (pNextStruct != nullptr) {
       // Coalescing adjacent free spaces
-      if ((MyMalloc::metadata*)(pCurrentStruct->buffer + pCurrentStruct->size) == pNextStruct) {
+      if ((SDRAM::metadata*)(pCurrentStruct->buffer + pCurrentStruct->size) == pNextStruct) {
         //Then the next one borders this one and we can coalesce the two
-        pCurrentStruct->size = pCurrentStruct->size + sizeof(MyMalloc::metadata) + pNextStruct->size; //Reset the size
+        pCurrentStruct->size = pCurrentStruct->size + sizeof(SDRAM::metadata) + pNextStruct->size; //Reset the size
         //pCurrentStruct->prev = pCurrentStruct->prev | pNextStruct->prev;
         //Now remove the next struct
         if (pNextStruct->next) {
@@ -395,8 +395,8 @@ public:
     if (!(this->pointerInMemoryRange((byte*)pBuffer))) {
       return; //The pointer they passed isn't within SDRAM addressable space, which means it was not `malloc`ated by any of our calls
     }
-    MyMalloc::metadata* pMetadataToFree = (MyMalloc::metadata*)((byte*)pBuffer - sizeof(MyMalloc::metadata));
-    MyMalloc::metadata metadataToFree = this->getMetadataStructInBigBuffer((byte*)pMetadataToFree);
+    SDRAM::metadata* pMetadataToFree = (SDRAM::metadata*)((byte*)pBuffer - sizeof(SDRAM::metadata));
+    SDRAM::metadata metadataToFree = this->getMetadataStructInBigBuffer((byte*)pMetadataToFree);
     //If it is already freed, don't do anything else
     if (!(metadataToFree.allocatedOrNot)) {
       return;
@@ -417,7 +417,7 @@ public:
     bool alreadyInsertedOrNot = false;
     // If requested buffer is before current FreeList head, replace head
     if (metadataToFree.buffer < pCurrentStruct->buffer) {
-      MyMalloc::metadata* pOldNext = this->freeSectionsListHeadPointer;
+      SDRAM::metadata* pOldNext = this->freeSectionsListHeadPointer;
       this->freeSectionsListHeadPointer = pMetadataToFree;
       pOldNext->prev = this->freeSectionsListHeadPointer;
       this->freeSectionsListHeadPointer->next = pOldNext;
@@ -426,14 +426,14 @@ public:
       alreadyInsertedOrNot = true; //Since this also counts as an insert
     }
 
-    MyMalloc::metadata* pNextStruct = pCurrentStruct->next;
+    SDRAM::metadata* pNextStruct = pCurrentStruct->next;
     while (pCurrentStruct != nullptr) {
       //First we want to try to insert this new free space
       if (!alreadyInsertedOrNot) { //Don't keep re-inserting into the list or this will loop indefinitely as we add more nodes on the fly
         if (pNextStruct) {
           if ((pCurrentStruct->buffer <= metadataToFree.buffer && pNextStruct->buffer >= metadataToFree.buffer)) {
             //The metadataToFree->buffer is in between the current struct and the next struct, so we insert after current struct
-            MyMalloc::metadata* pOldNext = pCurrentStruct->next;
+            SDRAM::metadata* pOldNext = pCurrentStruct->next;
             if (pOldNext != nullptr) {
               pOldNext->prev = pMetadataToFree;
             }
@@ -453,7 +453,7 @@ public:
         else {
           if ((pCurrentStruct->buffer <= metadataToFree.buffer)) {
             //The metadataToFree->buffer is in between the current struct and the next struct, so we insert after current struct
-            MyMalloc::metadata* pOldNext = pCurrentStruct->next;
+            SDRAM::metadata* pOldNext = pCurrentStruct->next;
             if (pOldNext != nullptr) {
               pOldNext->prev = pMetadataToFree;
             }
@@ -490,7 +490,7 @@ public:
   }
 
 public: //TODO: This needs to be private in production, public now for testing code while running
-  void PrintMyMallocFreeList() {
+  void PrintSDRAMFreeList() {
     // Loops through linked list
     metadata* pCurrentStruct = this->freeSectionsListHeadPointer;
     while (pCurrentStruct) {
@@ -540,4 +540,7 @@ public: //TODO: This needs to be private in production, public now for testing c
   }
 };
 #undef byte
+
+SDRAM mSDRAM; // global instance of memory manager
+
 } // namespace Jaffx

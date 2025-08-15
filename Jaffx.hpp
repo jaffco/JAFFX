@@ -1,21 +1,22 @@
 #include "libDaisy/src/daisy_seed.h"
-#include "JaffMalloc.hpp"
+#include "include/SDRAM.hpp"
 #include "arm_math.h"
 using namespace daisy;
 
-// TODO: organize this better
-Jaffx::MyMalloc m; // global instance of memory manager
 namespace giml {
-	// Overwrite stdlib calls in giml space
-	void* malloc(size_t size) { return m.malloc(size); }
-	void* calloc(size_t nelemb, size_t size) { return m.calloc(nelemb, size); }
-	void* realloc(void* ptr, size_t size) { return m.realloc(ptr, size); }
-	void free(void* ptr) { m.free(ptr); }
 
+	// Overwrite stdlib memory syscalls in giml space
+	void* malloc(size_t size) { return Jaffx::mSDRAM.malloc(size); }
+	void* calloc(size_t nelemb, size_t size) { return Jaffx::mSDRAM.calloc(nelemb, size); }
+	void* realloc(void* ptr, size_t size) { return Jaffx::mSDRAM.realloc(ptr, size); }
+	void free(void* ptr) { Jaffx::mSDRAM.free(ptr); }
+
+	// Overwrite trig calls with optimized ARM versions
 	inline float sin(float x) { 
 		return arm_sin_f32(x); 
 	}
 
+	// // 
 	inline float cos(float x) { 
 		return arm_cos_f32(x); 
 	}
@@ -93,7 +94,7 @@ public:
 		hardware.SetAudioBlockSize(buffersize); // number of samples handled per callback (buffer size)
 		hardware.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ); // sample rate
 
-		m.MyMallocInit(); // Needs to be called AFTER hardware init, and not in the object's constructor
+		mSDRAM.init(); // Needs to be called AFTER hardware init, and not in the object's constructor
 
 		// init instance and start callback
 		instance = this;
@@ -102,7 +103,10 @@ public:
 		hardware.StartAudio(AudioCallback);
 
 		// loop indefinitely
-		while (1) { this->loop(); this->debugLoop(); }
+		while (true) { 
+			this->loop(); 
+			this->debugLoop(); 
+		}
 	}
 	
 };
