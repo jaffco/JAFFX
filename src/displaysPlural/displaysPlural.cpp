@@ -1,8 +1,8 @@
 #include "../../Jaffx.hpp"
-#include "dev/oled_ssd130x.h"
+#include "dev/oled_ssd1312.h"
 #include "util/oled_fonts.h"
 
-using DisplayType = daisy::OledDisplay<daisy::SSD130x4WireSpi128x32Driver>;
+using DisplayType = daisy::OledDisplay<daisy::SSD13124WireSpi128x32Driver>;
 
 template <int NumDisplays>
 class DisplayManager {
@@ -72,7 +72,7 @@ public:
 };
 
 class DisplaysPlural : public Jaffx::Firmware {
-  DisplayManager<5> mDisplayManager;
+  DisplayManager<2> mDisplayManager;
   unsigned mPhase = 0; // Initialize phase counter
   bool screenState = false;
   bool lastScreenState = false;

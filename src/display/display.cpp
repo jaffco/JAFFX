@@ -1,8 +1,8 @@
 #include "../../Jaffx.hpp"
-#include "dev/oled_ssd130x.h"
+#include "dev/oled_ssd1312.h"
 #include "util/oled_fonts.h"
 
-using DisplayType = daisy::OledDisplay<daisy::SSD130x4WireSpi128x32Driver>;
+using DisplayType = daisy::OledDisplay<daisy::SSD13124WireSpi128x32Driver>;
 
 class Display : public Jaffx::Firmware {
   DisplayType mDisplay;
