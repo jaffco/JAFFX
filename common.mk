@@ -17,15 +17,7 @@ $(if $(wildcard $(LIBDAISY_DIR)),,$(error libDaisy directory not found at $(LIBD
 $(if $(wildcard $(RTNEURAL_DIR)),,$(error RTNeural directory not found at $(RTNEURAL_DIR)))
 
 # Define subdirectories
-CMSIS_DSP_DIR := $(LIBDAISY_DIR)/Drivers/CMSIS-DSP/Source
 SYSTEM_FILES_DIR := $(LIBDAISY_DIR)/core
-
-# CMSIS-DSP sources
-C_SOURCES := \
-$(CMSIS_DSP_DIR)/FastMathFunctions/arm_sin_f32.c \
-$(CMSIS_DSP_DIR)/FastMathFunctions/arm_cos_f32.c \
-$(CMSIS_DSP_DIR)/ControllerFunctions/arm_sin_cos_f32.c \
-$(CMSIS_DSP_DIR)/CommonTables/arm_common_tables.c
 
 # Core location, and generic makefile.
 include $(SYSTEM_FILES_DIR)/Makefile
