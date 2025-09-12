@@ -19,6 +19,9 @@ $(if $(wildcard $(RTNEURAL_DIR)),,$(error RTNeural directory not found at $(RTNE
 # Define subdirectories
 SYSTEM_FILES_DIR := $(LIBDAISY_DIR)/core
 
+# Set Boot Bin to 10ms version (default is 2000ms)
+BOOT_BIN = $(SYSTEM_FILES_DIR)/dsy_bootloader_v6_3-intdfu-10ms.bin
+
 # Core location, and generic makefile.
 include $(SYSTEM_FILES_DIR)/Makefile
 
