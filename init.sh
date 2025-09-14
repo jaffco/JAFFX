@@ -24,7 +24,7 @@ LIBDAISY_DIR=$PWD/libDaisy
 
 # Build libDaisy 
 echo -e "${BLUE}Building ${YELLOW}libDaisy${NC}${BLUE}${NC}..."
-cd "$LIBDAISY_DIR" ; make -s clean ; make -j -s
+cd "$LIBDAISY_DIR" ; make -s clean ; make -j4 -s
 if [ $? -ne 0 ]
 then
     echo -e "${RED}Failed to compile ${YELLOW}libDaisy${NC}.${NC}"
