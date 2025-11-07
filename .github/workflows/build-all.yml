@@ -79,7 +79,7 @@ jobs:
 
     - name: Build all JAFFX examples
       run: |
-        echo "Building all examples in src/ directory:"
+        echo "Building all examples in examples/ directory:"
         
         # Ensure ARM GCC is in PATH for Windows
         if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -96,9 +96,9 @@ jobs:
         echo "Using make command: $MAKE_CMD"
         echo "ARM GCC location: $(which arm-none-eabi-gcc)"
         
-        # Find all directories in src/ that contain Makefiles
+        # Find all directories in examples/ that contain Makefiles
         BUILD_FAILED=false
-        for example_dir in src/*/; do
+        for example_dir in examples/*/; do
           if [ -f "${example_dir}Makefile" ]; then
             example_name=$(basename "$example_dir")
             echo "Building example: $example_name"

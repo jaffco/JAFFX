@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ -z "$1" ]; then
-  echo "Usage: $0 <path/to/srcFile.cpp>"
+  echo "Usage: $0 <path/to/example.cpp>"
   exit 1
 fi
 
