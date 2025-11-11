@@ -5,28 +5,6 @@
 #include <cstdio>
 #include <cstdlib>
 
-// WAV file header structure
-struct WavHeader {
-  // RIFF header
-  char riff[4];
-  unsigned int fileSize;
-  char wave[4];
-  
-  // fmt subchunk
-  char fmt[4];
-  unsigned int fmtSize;
-  unsigned short audioFormat;
-  unsigned short numChannels;
-  unsigned int sampleRate;
-  unsigned int byteRate;
-  unsigned short blockAlign;
-  unsigned short bitsPerSample;
-  
-  // data subchunk
-  char data[4];
-  unsigned int dataSize;
-} __attribute__((packed));
-
 // SD card objects must be in AXI SRAM (SRAM), not DTCM for DMA access
 SdmmcHandler sdmmc_handler __attribute__((section(".sram1_bss")));
 FatFSInterface fsi_handler __attribute__((section(".sram1_bss")));
@@ -37,31 +15,41 @@ constexpr size_t WRITE_BUFFER_SIZE = 4096; // Write in 4KB chunks for efficiency
 int16_t audioBuffer[WRITE_BUFFER_SIZE] __attribute__((section(".sram1_bss")));
 size_t bufferIndex = 0;
 
-class SlipRecorder : public Jaffx::Firmware {
-  GPIO mLeds[3];
-  float RmsReport = 0.f;
-  
+class SDCardWavWriter {
+private:
   // Recording state
   bool sdCardOk = false;
   bool isRecording = false;
   unsigned int recordedSamples = 0;
   unsigned int recordStartTime = 0;
 
-  void init() override {
-    // Initialize LEDs
-    mLeds[0].Init(seed::D14, GPIO::Mode::OUTPUT);
-    mLeds[1].Init(seed::D12, GPIO::Mode::OUTPUT);
-    mLeds[2].Init(seed::D9, GPIO::Mode::OUTPUT);
+  // WAV file header structure
+  struct WavHeader {
+    // RIFF header
+    char riff[4];
+    unsigned int fileSize;
+    char wave[4];
     
-    // Initialize SD card
-    InitSDCard();
+    // fmt subchunk
+    char fmt[4];
+    unsigned int fmtSize;
+    unsigned short audioFormat;
+    unsigned short numChannels;
+    unsigned int sampleRate;
+    unsigned int byteRate;
+    unsigned short blockAlign;
+    unsigned short bitsPerSample;
     
-    // Start recording if SD card is OK
-    if(sdCardOk) {
-      StartRecording();
-    }
-  }
-  
+    // data subchunk
+    char data[4];
+    unsigned int dataSize;
+  } __attribute__((packed));
+
+public:
+
+  const bool sdStatus() { return this->sdCardOk; }
+  const bool recording() { return this->isRecording; }
+
   void InitSDCard() {
     // Initialize SDMMC hardware
     SdmmcHandler::Config sd_cfg;
@@ -117,8 +105,8 @@ class SlipRecorder : public Jaffx::Firmware {
     
     System::Delay(100);
     sdCardOk = true;
-  }
-  
+  }  
+
   void StartRecording() {
     if(!sdCardOk || isRecording) {
       return;
@@ -174,7 +162,7 @@ class SlipRecorder : public Jaffx::Firmware {
     // Sync to ensure header is written
     f_sync(&wav_file);
   }
-  
+
   unsigned int GetNextRecordingNumber() {
     // Try to read the counter file
     FIL counter_file;
@@ -208,7 +196,7 @@ class SlipRecorder : public Jaffx::Firmware {
     
     return recordNum;
   }
-  
+
   void WriteAudioSample(float sample) {
     if(!isRecording) {
       return;
@@ -232,7 +220,7 @@ class SlipRecorder : public Jaffx::Firmware {
       f_sync(&wav_file);
     }
   }
-  
+
   void FlushAudioBuffer() {
     if(!isRecording || bufferIndex == 0) {
       return;
@@ -252,7 +240,7 @@ class SlipRecorder : public Jaffx::Firmware {
     
     bufferIndex = 0;
   }
-  
+
   void StopRecording() {
     if(!isRecording) {
       return;
@@ -293,25 +281,37 @@ class SlipRecorder : public Jaffx::Firmware {
     // Sync to ensure header is updated
     f_sync(&wav_file);
   }
-  
-  void blockEnd() override {
-    // Write all samples from the audio block to recording
-    // This is called after processing each audio block
-    if(isRecording) {
-      // Note: processAudio already runs per-sample, so we just need to
-      // ensure buffer management happens regularly
-      // The actual sample writing happens in processAudio
+
+};
+
+class SlipRecorder : public Jaffx::Firmware {
+  GPIO mLeds[3];
+  float RmsReport = 0.f;
+  SDCardWavWriter mWavWriter;
+
+  void init() override {
+    // Initialize LEDs
+    mLeds[0].Init(seed::D14, GPIO::Mode::OUTPUT);
+    mLeds[1].Init(seed::D12, GPIO::Mode::OUTPUT);
+    mLeds[2].Init(seed::D9, GPIO::Mode::OUTPUT);
+    
+    // Initialize SD card
+    mWavWriter.InitSDCard();
+    
+    // Start recording if SD card is OK
+    if(mWavWriter.sdStatus()) {
+      mWavWriter.StartRecording();
     }
   }
 
   float processAudio(float in) override {
     // Write sample to SD card if recording
-    if(isRecording) {
-      WriteAudioSample(in);
+    if(mWavWriter.recording()) {
+      mWavWriter.WriteAudioSample(in);
     }
     
     // Calculate RMS for LED display
-    static unsigned counter = 0;
+    static int counter = 0;
     static float RMS = 0.f;
     counter++;
     RMS += in * in;
