@@ -5,23 +5,28 @@
 #include <cstdio>
 #include <cstdlib>
 
-// SD card objects must be in AXI SRAM (SRAM), not DTCM for DMA access
-SdmmcHandler sdmmc_handler __attribute__((section(".sram1_bss")));
-FatFSInterface fsi_handler __attribute__((section(".sram1_bss")));
-FIL wav_file __attribute__((section(".sram1_bss")));
+// Global SD resources (hardware-required placement in AXI SRAM for DMA)
+SdmmcHandler global_sdmmc_handler __attribute__((section(".sram1_bss")));
+FatFSInterface global_fsi_handler __attribute__((section(".sram1_bss")));
+FIL global_wav_file __attribute__((section(".sram1_bss")));
 
-// Audio buffer for writing to SD card - must be in AXI SRAM for DMA
-constexpr size_t WRITE_BUFFER_SIZE = 4096; // Write in 4KB chunks for efficiency
-int16_t audioBuffer[WRITE_BUFFER_SIZE] __attribute__((section(".sram1_bss")));
-size_t bufferIndex = 0;
-
+template<size_t WriteBufferSize = 4096>
 class SDCardWavWriter {
 private:
+  // References to global SD handlers
+  SdmmcHandler& sdmmc_handler = global_sdmmc_handler;
+  FatFSInterface& fsi_handler = global_fsi_handler;
+  FIL& wav_file = global_wav_file;
+
   // Recording state
   bool sdCardOk = false;
   bool isRecording = false;
   unsigned int recordedSamples = 0;
   unsigned int recordStartTime = 0;
+
+  // Audio buffer (template parameter allows flexible sizing)
+  int16_t audioBuffer[WriteBufferSize];
+  size_t bufferIndex = 0;
 
   // WAV file header structure
   struct WavHeader {
@@ -51,6 +56,7 @@ public:
   const bool recording() { return this->isRecording; }
 
   void InitSDCard() {
+    
     // Initialize SDMMC hardware
     SdmmcHandler::Config sd_cfg;
     sd_cfg.Defaults();
@@ -87,12 +93,6 @@ public:
     }
     
     if(res != FR_OK) {
-      return;
-    }
-    
-    // Initialize BSP
-    extern uint8_t BSP_SD_Init(void);
-    if(BSP_SD_Init() != 0) {
       return;
     }
     
@@ -210,7 +210,7 @@ public:
     recordedSamples++;
     
     // Write buffer to SD card when full
-    if(bufferIndex >= WRITE_BUFFER_SIZE) {
+    if(bufferIndex >= WriteBufferSize) {
       FlushAudioBuffer();
     }
     
@@ -287,7 +287,7 @@ public:
 class SlipRecorder : public Jaffx::Firmware {
   GPIO mLeds[3];
   float RmsReport = 0.f;
-  SDCardWavWriter mWavWriter;
+  SDCardWavWriter<> mWavWriter;  // Use default template parameter (4096 bytes)
 
   void init() override {
     // Initialize LEDs
