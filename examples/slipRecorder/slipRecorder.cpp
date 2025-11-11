@@ -350,6 +350,9 @@ class SlipRecorder : public Jaffx::Firmware {
       mLeds[1].Write(false);
       mLeds[2].Write(false);
     }
+
+    // show whether we're recording with onboard LED
+    hardware.SetLed(mWavWriter.recording());
     
     System::Delay(1);
   }
