@@ -23,6 +23,9 @@ namespace giml {
 
 }
 
+// Uncomment this line to enable debug logging and CPU load metering
+// #define JAFFX_DEBUG // TODO: we can convert this to `constexpr if` if C++17 performs the same or better
+
 namespace Jaffx {
 class Firmware {
 public:
@@ -36,7 +39,7 @@ public:
 
 	// loadMeter for debugging, bool for toggle
 	CpuLoadMeter loadMeter;
-	bool debug = false;
+	// bool debug = false;
 
 public:
 	// overridable init function
@@ -44,10 +47,10 @@ public:
 
 	// debug init function
 	inline void initDebug() {
-		if (debug) {
+		#ifdef JAFFX_DEBUG
 			hardware.StartLog();
 			loadMeter.Init(hardware.AudioSampleRate(), hardware.AudioBlockSize());
-		}
+		#endif
 	}
 
 	// overridable per-sample operation
@@ -62,7 +65,7 @@ public:
 
 	// debug loop
 	inline void debugLoop() {
-		if (debug) {
+		#ifdef JAFFX_DEBUG
 			// as seen in https://electro-smith.github.io/libDaisy/md_doc_2md_2__a3___getting-_started-_audio.html
 			const float avgLoad = loadMeter.GetAvgCpuLoad();
 			const float maxLoad = loadMeter.GetMaxCpuLoad();
@@ -73,19 +76,23 @@ public:
 			hardware.PrintLine("Avg: " FLT_FMT3 "%%", FLT_VAR3(avgLoad * 100.0f));
 			hardware.PrintLine("Min: " FLT_FMT3 "%%", FLT_VAR3(minLoad * 100.0f));
 			System::Delay(1000); // Don't spam the serial!
-		}
+		#endif
 	}
 
 	// basic mono->dual-mono callback
 	static void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
-		if (instance->debug) { instance->loadMeter.OnBlockStart(); }
+		#ifdef JAFFX_DEBUG
+			instance->loadMeter.OnBlockStart();
+		#endif
 		instance->blockStart();
 		for (size_t i = 0; i < size; i++) {
 			out[0][i] = instance->processAudio(in[0][i]); // format is in/out[channel][sample]
 			out[1][i] = out[0][i];
 		}
 		instance->blockEnd();
-		if (instance->debug) { instance->loadMeter.OnBlockEnd(); }
+		#ifdef JAFFX_DEBUG
+			instance->loadMeter.OnBlockEnd();
+		#endif
 	}
 
 	void start() {
