@@ -60,6 +60,8 @@ private:
    * @return `true` - Pointer is valid and operations can continue
    * @return `false` - Pointer is already invalid, break and maybe alert?
    */
+  // TODO: No need to recalculate &(this->pBackingMemory[DAISY_SDRAM_SIZE]) every time, store as class variable in init
+  // TODO: DeMorgan's to rename it as NOT in range as 3/4 times it is used negative
   bool pointerInMemoryRange(byte* pBufferPos) {
     return ((pBufferPos >= this->pBackingMemory) && 
               (&(this->pBackingMemory[DAISY_SDRAM_SIZE]) > pBufferPos));
@@ -111,6 +113,10 @@ public:
   unsigned int round8Align(unsigned int a) {
     return (a % 8) ? 8 - (a % 8) + a : a; //Rounds up to nearest multiple of 8
   }
+  // TODO: Test performance with this implementation:
+  // inline unsigned int round8Align(unsigned int a) {
+  //   return (a + 7) & ~7u;
+  // }
 
   void* malloc(size_t requestedSize) {
     if (requestedSize <= 0) return nullptr; //Safety check
@@ -207,6 +213,7 @@ public:
     if (returnVal) {
       //This means the `malloc` successfully worked, we just need to zero-fill the entire buffer now
       ::memset(returnVal, 0, arrSizeInBytes);
+      // TODO: CMSIS offers a memory clear function we can use
     }
     return returnVal; //Either way we either return nullptr or a successful buffer
   }
@@ -332,6 +339,7 @@ public:
 
       // Copy existing data to the new block
       ::memcpy(newBuffer, ptr, currentMetadata.size);
+      // TODO: DMA memcpy???? maybe overkill because allocs should only happen at start time and not runtime
 
       // Free the old block
       this->free(ptr);
