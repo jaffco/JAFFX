@@ -119,12 +119,12 @@ class JuTron : public Jaffx::Firmware {
   void updateCtrls() {
     mEnvelopeFilter.setQ(giml::scale(mSettings.J, 0.f, 1.f, 0.f, 20.f));
     mEnvelopeFilter.toggle(mSettings.toggleState);
+    mEnvelopeFilter.setFilterType(mSettings.mode);
   }
 
   void init() override {
     mInterfaceManager.init(hardware, mSettings, mPersistentStorage);
-    mEnvelopeFilter.setParams();
-    mEnvelopeFilter.toggle(mSettings.toggleState);
+    updateCtrls();
   }
 
   float processAudio(float in) override {
@@ -133,7 +133,7 @@ class JuTron : public Jaffx::Firmware {
 
   void loop() override {
     mInterfaceManager.processInput();
-    mEnvelopeFilter.toggle(mSettings.toggleState);
+    updateCtrls();
     mInterfaceManager.processOutput();
     System::Delay(5);
   }
