@@ -3,12 +3,18 @@
 // AdcReads allow us to sample continuous control values
 class AdcRead : public Jaffx::Firmware {
   bool trigger = false;
+  AnalogControl mKnob;
 
   void init() override {
-    AdcChannelConfig config; // if multiple, set up as an array: `config[numAdcs]`
+    // Initialize ADC channel
+    AdcChannelConfig config;
     config.InitSingle(seed::A0);
     this->hardware.adc.Init(&config, 1);
     this->hardware.adc.Start();
+
+    // Initialize AnalogControl with ADC pointer from Jaffx hardware
+    mKnob.Init(this->hardware.adc.GetPtr(0), this->samplerate);
+
     this->hardware.StartLog();
   }
 
@@ -24,7 +30,15 @@ class AdcRead : public Jaffx::Firmware {
 
   void loop() override {
     if (trigger) {
-      hardware.PrintLine("Knob: %d", this->hardware.adc.Get(0));
+      // Process the AnalogControl (applies smoothing and normalization)
+      float knobValue = mKnob.Process();
+
+      // Also show raw ADC value for comparison
+      uint16_t rawValue = this->hardware.adc.Get(0);
+
+      hardware.PrintLine("Raw ADC: %d", rawValue);
+      hardware.PrintLine("AnalogControl: " FLT_FMT3, FLT_VAR3(knobValue));
+
       trigger = false;
     }
     System::Delay(500); // Don't spam the serial!
