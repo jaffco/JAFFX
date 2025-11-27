@@ -4,6 +4,9 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include "fsm.h"
+#include "state.h"
+
 
 // Global SD resources (hardware-required placement in AXI SRAM for DMA)
 SdmmcHandler global_sdmmc_handler __attribute__((section(".sram1_bss")));
