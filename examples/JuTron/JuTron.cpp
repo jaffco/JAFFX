@@ -11,13 +11,20 @@
  */
 struct Settings {
   bool toggleState = false;
+  float vol = 0.5f;
+  float drive = 0.5f;
+  float J = 0.5f;
+  int mode = 0;
 
   // Overloading the != operator
   // This is necessary as this operator is used in the PersistentStorage source code
   bool operator!=(const Settings& a) const {
-    return !(a.toggleState == toggleState);
+    return (toggleState != a.toggleState) ||
+           (vol != a.vol) ||
+           (drive != a.drive) ||
+           (J != a.J) ||
+           (mode != a.mode);
   }
-
 };
 
 /**
@@ -27,30 +34,65 @@ struct Settings {
 struct InterfaceManager {
   GPIO mLed;
   Switch mFootswitch;
+  AnalogControl mVolKnob;
+  AnalogControl mDriveKnob;
+  AnalogControl mJKnob;
+  Encoder mModeEncoder;
   Settings* localSettings = nullptr;
   PersistentStorage<Settings>* savedSettings = nullptr;
 
   /**
    * @brief init function based on specific hardware setup
    */
-  void init(Settings& local, PersistentStorage<Settings>& saved) {
+  void init(DaisySeed& hw, Settings& local, PersistentStorage<Settings>& saved) {
     // init settings
     localSettings = &local;
     savedSettings = &saved;
     loadSettings();
 
+    // Configure ADC channels for the three knobs
+    AdcChannelConfig adcConfig[3];
+    adcConfig[0].InitSingle(seed::A9);  // Vol knob
+    adcConfig[1].InitSingle(seed::A11); // Drive knob
+    adcConfig[2].InitSingle(seed::A5);  // J knob
+
+    // Initialize ADC with the three channels
+    hw.adc.Init(adcConfig, 3);
+    hw.adc.Start();
+
     // init ctrls
-    mFootswitch.Init(seed::A0, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
-    mLed.Init(seed::A1, GPIO::Mode::OUTPUT);
+    mLed.Init(seed::A0, GPIO::Mode::OUTPUT);
+    mFootswitch.Init(seed::A1, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
+    mVolKnob.Init(hw.adc.GetPtr(0), hw.AudioSampleRate());   // Vol knob on ADC channel 0
+    mDriveKnob.Init(hw.adc.GetPtr(1), hw.AudioSampleRate()); // Drive knob on ADC channel 1
+    mJKnob.Init(hw.adc.GetPtr(2), hw.AudioSampleRate());     // J knob on ADC channel 2
+    mModeEncoder.Init(seed::A3, seed::A4, seed::A0); // Encoder with button pin
     mLed.Write(localSettings->toggleState);
   }
 
   void processInput() {
+
+    // Debounce discrete ctrls
     mFootswitch.Debounce();
+    mModeEncoder.Debounce();
+
     if (mFootswitch.FallingEdge()) { // invert toggle state
       localSettings->toggleState = !localSettings->toggleState;
-      // saveSettings();
     }
+
+    if (mModeEncoder.Increment()) {
+      int* mode = &localSettings->mode;
+      mode++;
+      if (*mode > 2) { 
+        *mode = 0; 
+      }
+    }
+
+    localSettings->vol = mVolKnob.Process();
+    localSettings->drive = mDriveKnob.Process();
+    localSettings->J = mJKnob.Process();
+
+    saveSettings();
   }
 
   void processOutput() {
@@ -74,14 +116,19 @@ class JuTron : public Jaffx::Firmware {
   Settings mSettings;
   PersistentStorage<Settings> mPersistentStorage{hardware.qspi};
 
+  void updateCtrls() {
+    mEnvelopeFilter.setQ(giml::scale(mSettings.J, 0.f, 1.f, 0.f, 20.f));
+    mEnvelopeFilter.toggle(mSettings.toggleState);
+  }
+
   void init() override {
-    mInterfaceManager.init(mSettings, mPersistentStorage);
+    mInterfaceManager.init(hardware, mSettings, mPersistentStorage);
     mEnvelopeFilter.setParams();
     mEnvelopeFilter.toggle(mSettings.toggleState);
   }
 
   float processAudio(float in) override {
-    return mEnvelopeFilter.processSample(in);
+    return mEnvelopeFilter.processSample(mSettings.drive * in) * mSettings.vol;
   }
 
   void loop() override {
