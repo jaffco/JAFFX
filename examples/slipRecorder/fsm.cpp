@@ -1,8 +1,9 @@
 #include "fsm.h"
+#include "state.h"
 
 FSM::FSM()
 {
-    currentState = SleepState::getInstance();
+    currentState = &Sleep::getInstance();
 }
 
 void FSM::setState(State& newState)

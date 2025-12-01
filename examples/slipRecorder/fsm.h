@@ -1,7 +1,7 @@
 #ifndef FSM_H
 #define FSM_H
 
-#include "state.h"
+class State;
 
 class FSM
 {
