@@ -3,6 +3,8 @@
 #include "arm_math.h"
 using namespace daisy;
 
+// #define USE_CLK_CYCLE_COUNTER
+
 namespace giml {
 
 	// Overwrite stdlib memory syscalls in giml space
@@ -26,6 +28,8 @@ namespace giml {
 // Uncomment this line to enable debug logging and CPU load metering
 // #define JAFFX_DEBUG // TODO: we can convert this to `constexpr if` if C++17 performs the same or better
 
+
+
 namespace Jaffx {
 class Firmware {
 public:
@@ -47,9 +51,15 @@ public:
 
 	// debug init function
 	inline void initDebug() {
+		#if defined(JAFFX_DEBUG) || defined(USE_CLK_CYCLE_COUNTER)
+			// start the serial logger
+			hardware.StartLog(true); // true to wait for PC connection
+		#endif
 		#ifdef JAFFX_DEBUG
-			hardware.StartLog();
 			loadMeter.Init(hardware.AudioSampleRate(), hardware.AudioBlockSize());
+		#endif
+		#ifdef USE_CLK_CYCLE_COUNTER
+			STM32CycleProfiler::Instance().Init();
 		#endif
 	}
 
@@ -77,6 +87,21 @@ public:
 			hardware.PrintLine("Min: " FLT_FMT3 "%%", FLT_VAR3(minLoad * 100.0f));
 			System::Delay(1000); // Don't spam the serial!
 		#endif
+		#ifdef USE_CLK_CYCLE_COUNTER
+			
+			int myInt = PROFILE_BEGIN("AudioCallback");
+			int myInt2 = PROFILE_END("AudioCallback");
+			hardware.PrintLine("PROFILE BEGIN returned: %d", myInt);
+			hardware.PrintLine("PROFILE END returned: %d", myInt2);
+			hardware.PrintLine("AudioCallback cycles: %lu", STM32CycleProfiler::Instance().GetCycles("AudioCallback"));
+			hardware.PrintLine("System Frequency: " FLT_FMT3 " MHz", FLT_VAR3(STM32CycleProfiler::Instance().getSystemFrequencyMHz()));
+			// std::string report = STM32CycleProfiler::Instance().GetFullReportMicroseconds();
+			// hardware.PrintLine("%s", report.c_str());
+			// std::string rawChannels = STM32CycleProfiler::Instance().GetAllChannels();
+			// hardware.PrintLine("Raw Channels:\n%s", rawChannels.c_str());
+			// System::Delay(500); // Don't spam the serial!
+		#endif
+		hardware.PrintLine("debug loop");
 	}
 
 	// basic mono->dual-mono callback
@@ -89,12 +114,24 @@ public:
 		// auto* inR = in[1];
 		auto* outL = out[0];
 		auto* outR = out[1];
+		hardware.PrintLine("block rate again");
+		// #ifdef USE_CLK_CYCLE_COUNTER
+		// 	int myInt = PROFILE_BEGIN("AudioCallback");
+		// 	hardware.PrintLine("PROFILE BEGIN returned: %d", myInt);
+		// #else
+		// 	hardware.PrintLine("profiling isn't happening");
+		// #endif
+		hardware.PrintLine("block rate again");
 		for (size_t i = 0; i < size; i++) {
 			float s = instance->processAudio(inL[i]); // format is in/out[channel][sample]
 			outL[i] = s;
 			outR[i] = s;
 			// out[1][i] = out[0][i];
 		}
+		// #ifdef USE_CLK_CYCLE_COUNTER
+		// 	int myInt2 = PROFILE_END("AudioCallback");
+		// 	hardware.PrintLine("PROFILE END returned: %d", myInt2);
+		// #endif
 		instance->blockEnd();
 		#ifdef JAFFX_DEBUG
 			instance->loadMeter.OnBlockEnd();
