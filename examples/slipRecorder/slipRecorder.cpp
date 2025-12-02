@@ -7,8 +7,10 @@
 #include "fsm.h"
 #include "state.h"
 
+#include "stm32h750xx.h"
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_pwr_ex.h"
+
 
 
 // Global SD resources (hardware-required placement in AXI SRAM for DMA)
