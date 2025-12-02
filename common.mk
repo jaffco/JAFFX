@@ -31,6 +31,10 @@ CPP_STANDARD = -std=gnu++14
 # Set optimization level
 OPT=-Ofast
 
+# Debug symbols for assembly inspection
+CFLAGS += -g
+CPPFLAGS += -g
+
 # Core location, and generic makefile.
 include $(SYSTEM_FILES_DIR)/Makefile
 
