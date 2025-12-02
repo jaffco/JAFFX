@@ -7,11 +7,16 @@
 #include "fsm.h"
 #include "state.h"
 
+#include "stm32h7xx_hal.h"
+#include "stm32h7xx_hal_pwr_ex.h"
+
 
 // Global SD resources (hardware-required placement in AXI SRAM for DMA)
 SdmmcHandler global_sdmmc_handler __attribute__((section(".sram1_bss")));
 FatFSInterface global_fsi_handler __attribute__((section(".sram1_bss")));
 FIL global_wav_file __attribute__((section(".sram1_bss")));
+
+
 
 template<size_t WriteBufferSize = 4096>
 class SDCardWavWriter {
@@ -286,6 +291,42 @@ public:
   }
 
 };
+
+
+void wakeUp() {
+
+}
+
+
+void sleepMode() {
+  // Clean D-Cache before entering sleep (recommended by documentation)
+  SCB_CleanDCache();
+  
+  // Configure domains before putting CPU in deep sleep
+  SET_BIT(PWR->CPUCR, PWR_CPUCR_PDDS_D1);      // D1 STANDBY
+  SET_BIT(PWR->CPUCR, PWR_CPUCR_PDDS_D2);      // D2 STANDBY
+  CLEAR_BIT(PWR->CPUCR, PWR_CPUCR_PDDS_D3);    // D3 STOP
+  
+  // Use low-power regulator as per existing EnterSTOP2Mode function
+  MODIFY_REG(PWR->CR1, PWR_CR1_LPDS, PWR_LOWPOWERREGULATOR_ON);
+  
+  // Set deep sleep bit -> sends CPU to deep sleep after a WFI or WFE
+  SET_BIT(SCB->SCR, SCB_SCR_SLEEPDEEP_Msk);
+
+  // Waits for instructions to finish as per existing EnterSTOP2Mode function
+  __DSB();
+  __ISB();
+
+  // WFI to put into sleep mode until interrupt detected
+  __WFI();
+
+  // Wake up
+  CLEAR_BIT(SCB->SCR, SCB_SCR_SLEEPDEEP_Msk);
+
+  wakeUp();
+}
+
+
 
 class SlipRecorder : public Jaffx::Firmware {
   GPIO mLeds[3];
