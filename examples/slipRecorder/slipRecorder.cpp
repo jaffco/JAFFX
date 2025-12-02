@@ -291,6 +291,8 @@ class SlipRecorder : public Jaffx::Firmware {
   GPIO mLeds[3];
   float RmsReport = 0.f;
   SDCardWavWriter<> mWavWriter;  // Use default template parameter (4096 bytes)
+  bool usb_connected = false;
+  FSM mFSM;
 
   void init() override {
     // Initialize LEDs
@@ -300,6 +302,13 @@ class SlipRecorder : public Jaffx::Firmware {
     
     // Initialize SD card
     mWavWriter.InitSDCard();
+
+    // choose initial state based on SD status
+    if (mWavWriter.sdStatus()) {
+      mFSM.setState(SD_Check::getInstance());
+    } else {
+      mFSM.setState(Sleep::getInstance());
+    }
     
     // Start recording if SD card is OK
     if(mWavWriter.sdStatus()) {
@@ -327,7 +336,7 @@ class SlipRecorder : public Jaffx::Firmware {
     return in; // output throughput 
   }
 
-  void loop() override {
+  void indicateLEDs() {
     // Convert RMS to dB - Add small offset to avoid log(0)   
     float dB = 20.0f * log10f(RmsReport + 1e-12f); 
     
@@ -353,8 +362,17 @@ class SlipRecorder : public Jaffx::Firmware {
       mLeds[1].Write(false);
       mLeds[2].Write(false);
     }
+  }
 
-    // show whether we're recording with onboard LED
+  void loop() override {
+    
+    if(usb_connected) {
+      indicateLEDs();
+    }
+
+    
+
+
     hardware.SetLed(mWavWriter.recording());
     
     System::Delay(1);

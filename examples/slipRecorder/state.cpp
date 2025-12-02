@@ -17,8 +17,7 @@ void Sleep::exit(FSM* recorder) {
 
 void Sleep::handle(FSM* recorder) {
 	(void)recorder;
-	// Default implementation: remain in Sleep until external code
-	// triggers a transition by calling recorder->setState(...).
+	// 
 }
 
 // SD Card check state: verify SD card present and ready
@@ -32,8 +31,7 @@ void SD_Check::exit(FSM* recorder) {
 
 void SD_Check::handle(FSM* recorder) {
 	(void)recorder;
-	// Placeholder: perform SD initialization/checks here and then
-	// transition to Record or Sleep depending on the result.
+	
 }
 
 // Record state: active recording state
@@ -47,6 +45,6 @@ void Record::exit(FSM* recorder) {
 
 void Record::handle(FSM* recorder) {
 	(void)recorder;
-	// Placeholder: write audio data or manage recording lifecycle.
+	// show whether we're recording with onboard LED
 }
 
