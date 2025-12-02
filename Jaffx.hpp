@@ -85,9 +85,15 @@ public:
 			instance->loadMeter.OnBlockStart();
 		#endif
 		instance->blockStart();
+		auto* inL = in[0];
+		// auto* inR = in[1];
+		auto* outL = out[0];
+		auto* outR = out[1];
 		for (size_t i = 0; i < size; i++) {
-			out[0][i] = instance->processAudio(in[0][i]); // format is in/out[channel][sample]
-			out[1][i] = out[0][i];
+			float s = instance->processAudio(inL[i]); // format is in/out[channel][sample]
+			outL[i] = s;
+			outR[i] = s;
+			// out[1][i] = out[0][i];
 		}
 		instance->blockEnd();
 		#ifdef JAFFX_DEBUG
