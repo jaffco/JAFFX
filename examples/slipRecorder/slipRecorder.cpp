@@ -15,8 +15,86 @@ FatFSInterface global_fsi_handler __attribute__((section(".sram1_bss")));
 FIL global_wav_file __attribute__((section(".sram1_bss")));
 #include "SDCard.hpp"
 
+
+// For the USB connection detection
+void PA2_EXTI_Init(void) {
+    // Jaffx::Firmware::instance->hardware.SetLed(true);
+    /* ---------------------- Enable Clocks ---------------------- */
+    
+    /* GPIOA clock */
+    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOAEN;
+    
+    /* ---------------------- Configure PA2 as Input ---------------------- */
+    /* MODER2 = 00 (input) */
+    GPIOA->MODER &= ~GPIO_MODER_MODE2;
+    
+    /* Use internal pulldown */
+    GPIOA->PUPDR |= GPIO_PUPDR_PUPD2_1;
+    
+    /* SYSCFG clock */
+    RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
+    
+    /* ---------------------- Connect PA2 to EXTI2 ---------------------- */
+    SYSCFG->EXTICR[0] &= ~SYSCFG_EXTICR1_EXTI2; // Clear EXTI2 bits
+    // SYSCFG->EXTICR[0] |= SYSCFG_EXTICR1_EXTI2_PA; // Set EXTI2 to Port A (default)
+    
+    /* Rising trigger enabled */
+    EXTI->RTSR1 |= EXTI_RTSR1_TR2;
+    
+    /* Falling trigger enabled */
+    EXTI->FTSR1 |= EXTI_FTSR1_TR2;
+    
+    /* Unmask interrupt */
+    EXTI->IMR1 |= EXTI_IMR1_IM2;
+    
+    // SlipRecorder::hardware.PrintLine()
+    /* ---------------------- NVIC Configuration ---------------------- */
+    
+    NVIC_EnableIRQ(EXTI2_IRQn);
+    NVIC_SetPriority(EXTI2_IRQn, 1);
+}
+
+// For the power button
+void PC0_EXTI_Init(void) {
+//   Jaffx::Firmware::instance->hardware.SetLed(true);
+  /* ---------------------- Enable Clocks ---------------------- */
+
+  /* GPIOC clock */
+  RCC->AHB4ENR |= RCC_AHB4ENR_GPIOCEN;
+
+  /* ---------------------- Configure PC0 as Input ---------------------- */
+  /* MODER0 = 00 (input) */
+  GPIOC->MODER &= ~GPIO_MODER_MODE0;
+
+  /* No pull-up / pull-down */
+  GPIOC->PUPDR &= ~GPIO_PUPDR_PUPD0;
+
+  /* SYSCFG clock */
+  RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
+
+  /* ---------------------- Connect PC0 to EXTI0 ---------------------- */
+  SYSCFG->EXTICR[0] &= ~SYSCFG_EXTICR1_EXTI0; // Clear EXTI0 bits
+  SYSCFG->EXTICR[0] |= SYSCFG_EXTICR1_EXTI0_PC; // Set EXTI0 to Port C
+
+  /* Rising trigger enabled */
+  EXTI->RTSR1 |= EXTI_RTSR1_TR0;
+
+  /* Falling trigger disabled */
+  EXTI->FTSR1 &= ~EXTI_FTSR1_TR0;
+
+  /* Unmask interrupt */
+  EXTI->IMR1 |= EXTI_IMR1_IM0;
+
+  // SlipRecorder::hardware.PrintLine()
+  /* ---------------------- NVIC Configuration ---------------------- */
+  
+  NVIC_EnableIRQ(EXTI0_IRQn);
+  NVIC_SetPriority(EXTI0_IRQn, 1);
+}
+
+// For the SD Card connection detection
 void PB12_EXTI_Init(void) {
-  Jaffx::Firmware::instance->hardware.SetLed(true);
+//   Jaffx::Firmware::instance->hardware.SetLed(true);
   /* ---------------------- Enable Clocks ---------------------- */
 
   /* GPIOB clock */
@@ -96,6 +174,8 @@ public:
       mWavWriter.StartRecording();
     }
     PB12_EXTI_Init();
+    PC0_EXTI_Init();
+    PA2_EXTI_Init();
   }
 
   float processAudio(float in) override {
@@ -125,6 +205,21 @@ public:
   void on_PB12_falling() {
     hardware.PrintLine("Falling Edge Detected");
   }
+
+  void on_PA2_rising() {
+      usb_connected = true;
+      hardware.PrintLine("USB Connected");
+  }
+
+    void on_PA2_falling() {
+        usb_connected = false;
+        hardware.PrintLine("USB Disconnected");
+    }
+
+    void on_PC0_rising() {
+        hardware.PrintLine("Power Button Pressed");
+        // mStateMachine.getCurrentState()->onPowerButtonPress(&mStateMachine);
+    }
 
   void indicateLEDs() {
     // Convert RMS to dB - Add small offset to avoid log(0)   
@@ -218,6 +313,40 @@ extern "C" void EXTI15_10_IRQHandler(void) {
     }
   //}
 }
+
+extern "C" void EXTI0_IRQHandler(void) {
+    if (EXTI->PR1 & EXTI_PR1_PR0) {
+        /* Clear pending flag */
+        EXTI->PR1 |= EXTI_PR1_PR0;
+
+       Jaffx::Firmware::instance->hardware.SetLed(toggle);
+        toggle = !toggle;
+
+        /* Determine edge by reading input */
+        SlipRecorder& mInstance = SlipRecorder::Instance();
+        if (GPIOC->IDR & GPIO_IDR_ID0) {
+          mInstance.on_PC0_rising();
+        }
+    }
+}
+
+extern "C" void EXTI2_IRQHandler(void) {
+    // Check if EXTI2 triggered the interrupt
+    if (EXTI->PR1 & EXTI_PR1_PIF2) {
+        // Clear the interrupt pending bit for EXTI2
+        EXTI->PR1 |= EXTI_PR1_PIF2;
+        
+        // Determine if it was a rising or falling edge
+        if (GPIOA->IDR & GPIO_IDR_ID2) {
+            // Rising edge detected
+            SlipRecorder::Instance().on_PA2_rising();
+        } else {
+            // Falling edge detected
+            SlipRecorder::Instance().on_PA2_falling();
+        }
+    }
+}
+
 
 int main() {
   SlipRecorder::Instance().start();
