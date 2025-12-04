@@ -296,8 +296,10 @@ void sleepMode() {
 // (*EXTIptr)()
 bool toggle = false; // global toggle? sus af
 
+// SD Card Connection Detection IRQ Handler
 extern "C" void EXTI15_10_IRQHandler(void) {
-  // if (EXTI->PR1 & EXTI_PR1_PR12) {
+  // Check if EXTI12 triggered the interrupt
+  if (EXTI->PR1 & EXTI_PR1_PR12) {
     /* Clear pending flag */
     EXTI->PR1 |= EXTI_PR1_PR12;
 
@@ -311,10 +313,12 @@ extern "C" void EXTI15_10_IRQHandler(void) {
     } else {
       mInstance.on_PB12_falling();
     }
-  //}
+  }
 }
 
+// Power Button IRQ Handler
 extern "C" void EXTI0_IRQHandler(void) {
+  // Check if EXTI0 triggered the interrupt
     if (EXTI->PR1 & EXTI_PR1_PR0) {
         /* Clear pending flag */
         EXTI->PR1 |= EXTI_PR1_PR0;
@@ -330,11 +334,12 @@ extern "C" void EXTI0_IRQHandler(void) {
     }
 }
 
+// USB 
 extern "C" void EXTI2_IRQHandler(void) {
     // Check if EXTI2 triggered the interrupt
-    if (EXTI->PR1 & EXTI_PR1_PIF2) {
+    if (EXTI->PR1 & EXTI_PR1_PR2) {
         // Clear the interrupt pending bit for EXTI2
-        EXTI->PR1 |= EXTI_PR1_PIF2;
+        EXTI->PR1 |= EXTI_PR1_PR2;
         
         // Determine if it was a rising or falling edge
         if (GPIOA->IDR & GPIO_IDR_ID2) {
