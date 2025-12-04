@@ -45,7 +45,7 @@ public:
 	// debug init function
 	inline void initDebug() {
 		if (debug) {
-			hardware.StartLog();
+			hardware.StartLog(true);
 			loadMeter.Init(hardware.AudioSampleRate(), hardware.AudioBlockSize());
 		}
 	}
@@ -68,11 +68,11 @@ public:
 			const float maxLoad = loadMeter.GetMaxCpuLoad();
 			const float minLoad = loadMeter.GetMinCpuLoad();
 			// print it to the serial connection (as percentages)
-			hardware.PrintLine("Processing Load:");
-			hardware.PrintLine("Max: " FLT_FMT3 "%%", FLT_VAR3(maxLoad * 100.0f));
-			hardware.PrintLine("Avg: " FLT_FMT3 "%%", FLT_VAR3(avgLoad * 100.0f));
-			hardware.PrintLine("Min: " FLT_FMT3 "%%", FLT_VAR3(minLoad * 100.0f));
-			System::Delay(1000); // Don't spam the serial!
+			// hardware.PrintLine("Processing Load:");
+			// hardware.PrintLine("Max: " FLT_FMT3 "%%", FLT_VAR3(maxLoad * 100.0f));
+			// hardware.PrintLine("Avg: " FLT_FMT3 "%%", FLT_VAR3(avgLoad * 100.0f));
+			// hardware.PrintLine("Min: " FLT_FMT3 "%%", FLT_VAR3(minLoad * 100.0f));
+			// System::Delay(1000); // Don't spam the serial!
 		}
 	}
 

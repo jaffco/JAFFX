@@ -12,11 +12,16 @@
 #include "stm32h7xx_hal_pwr_ex.h"
 
 
-
+// TODO: Move these to the dedicated DMA section exposed in daisy_core.h
 // Global SD resources (hardware-required placement in AXI SRAM for DMA)
 SdmmcHandler global_sdmmc_handler __attribute__((section(".sram1_bss")));
 FatFSInterface global_fsi_handler __attribute__((section(".sram1_bss")));
 FIL global_wav_file __attribute__((section(".sram1_bss")));
+
+
+
+
+
 
 
 
@@ -328,20 +333,39 @@ void sleepMode() {
   wakeUp();
 }
 
+  void PB12_EXTI_Init(void);
+
 
 
 class SlipRecorder : public Jaffx::Firmware {
+    public:
+        static SlipRecorder& Instance() {
+            static SlipRecorder instance;
+            return instance;
+        }
+        SlipRecorder(const SlipRecorder&) = delete;
+        SlipRecorder(SlipRecorder&&) = delete;
+        SlipRecorder& operator=(const SlipRecorder&) = delete;
+        SlipRecorder& operator=(SlipRecorder&&) = delete;
+
+    private:
+        SlipRecorder() = default;
+        ~SlipRecorder() = default;
+    public:
+
   GPIO mLeds[3];
   float RmsReport = 0.f;
   SDCardWavWriter<> mWavWriter;  // Use default template parameter (4096 bytes)
   bool usb_connected = false;
   FSM mFSM;
 
+
   void init() override {
+    debug = true;
     // Initialize LEDs
-    mLeds[0].Init(seed::D14, GPIO::Mode::OUTPUT);
-    mLeds[1].Init(seed::D12, GPIO::Mode::OUTPUT);
-    mLeds[2].Init(seed::D9, GPIO::Mode::OUTPUT);
+    mLeds[0].Init(seed::D21, GPIO::Mode::OUTPUT);
+    mLeds[1].Init(seed::D20, GPIO::Mode::OUTPUT);
+    mLeds[2].Init(seed::D19, GPIO::Mode::OUTPUT);
     
     // Initialize SD card
     mWavWriter.InitSDCard();
@@ -357,6 +381,7 @@ class SlipRecorder : public Jaffx::Firmware {
     if(mWavWriter.sdStatus()) {
       mWavWriter.StartRecording();
     }
+    PB12_EXTI_Init();
   }
 
   float processAudio(float in) override {
@@ -378,6 +403,14 @@ class SlipRecorder : public Jaffx::Firmware {
     
     return in; // output throughput 
   }
+
+  void on_PB12_rising() {
+        hardware.PrintLine("Rising Edge Detected");
+    }
+
+    void on_PB12_falling() {
+        hardware.PrintLine("Falling Edge Detected");
+    }
 
   void indicateLEDs() {
     // Convert RMS to dB - Add small offset to avoid log(0)   
@@ -416,16 +449,78 @@ class SlipRecorder : public Jaffx::Firmware {
     
 
 
-    hardware.SetLed(mWavWriter.recording());
+    // hardware.SetLed(mWavWriter.recording());
     
     System::Delay(1);
   }
 };
 
 int main() {
-  SlipRecorder mSlipRecorder;
-  mSlipRecorder.start();
+  SlipRecorder::Instance().start();
+    // EXTIptr = mSlipRecorder::IRQHandler
+
   return 0;
 }
 
+  void PB12_EXTI_Init(void) {
+    SlipRecorder::Instance().hardware.SetLed(true);
+    /* ---------------------- Enable Clocks ---------------------- */
 
+    /* GPIOB clock */
+    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOBEN;
+
+    /* ---------------------- Configure PB12 as Input ---------------------- */
+    /* MODER12 = 00 (input) */
+    GPIOB->MODER &= ~GPIO_MODER_MODE12;
+
+    /* No pull-up / pull-down */
+    GPIOB->PUPDR &= ~GPIO_PUPDR_PUPD12;
+
+    /* SYSCFG clock */
+    RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
+
+    /* ---------------------- Connect PB12 to EXTI12 ---------------------- */
+    SYSCFG->EXTICR[3] &= ~SYSCFG_EXTICR4_EXTI12; // Clear EXTI12 bits
+    SYSCFG->EXTICR[3] |= SYSCFG_EXTICR4_EXTI12_PB; // Set EXTI12 to Port B
+
+
+    
+
+    /* Rising trigger enabled */
+    EXTI->RTSR1 |= EXTI_RTSR1_TR12;
+
+    /* Falling trigger enabled */
+    EXTI->FTSR1 |= EXTI_FTSR1_TR12;
+
+    /* Unmask interrupt */
+    EXTI->IMR1 |= EXTI_IMR1_IM12;
+
+    // SlipRecorder::hardware.PrintLine()
+    /* ---------------------- NVIC Configuration ---------------------- */
+    
+    NVIC_EnableIRQ(EXTI15_10_IRQn);
+    NVIC_SetPriority(EXTI15_10_IRQn, 1);
+}
+
+// (*EXTIptr)()
+bool toggle = false;
+
+extern "C" void EXTI15_10_IRQHandler(void) {
+    // if (EXTI->PR1 & EXTI_PR1_PR12) {
+        /* Clear pending flag */
+        EXTI->PR1 |= EXTI_PR1_PR12;
+
+        SlipRecorder::Instance().hardware.SetLed(toggle);
+        toggle = !toggle;
+
+        /* Determine edge by reading input */
+        if (GPIOB->IDR & GPIO_IDR_ID12)
+        {
+            SlipRecorder::Instance().on_PB12_rising();
+        }
+        else
+        {
+            SlipRecorder::Instance().on_PB12_falling();
+        }
+    //}
+}
