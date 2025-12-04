@@ -6,10 +6,10 @@ class StateMachine; // forward declaration
 // Interface class for all states
 class IState {
 public:
-    virtual void enter(StateMachine*) {}
-    virtual void exit(StateMachine*) {}
-    virtual void handle(StateMachine*) {}
-    virtual ~IState() = default;
+	virtual void enter(StateMachine*) {}
+	virtual void exit(StateMachine*) {}
+	virtual void handle(StateMachine*) {}
+	virtual ~IState() = default;
 };
 
 // CRTP base state class

@@ -53,17 +53,19 @@ void PB12_EXTI_Init(void) {
 }
 
 class SlipRecorder : public Jaffx::Firmware {
+private:
+  SlipRecorder() = default;
+  ~SlipRecorder() = default;
+  
 public:
+  static SlipRecorder& Instance() {
+    static SlipRecorder instance;
+    return instance;
+  }
   SlipRecorder(const SlipRecorder&) = delete;
   SlipRecorder(SlipRecorder&&) = delete;
   SlipRecorder& operator=(const SlipRecorder&) = delete;
   SlipRecorder& operator=(SlipRecorder&&) = delete;
-
-private:
-  SlipRecorder() = default;
-  ~SlipRecorder() = default;
-
-public:
 
   GPIO mLeds[3];
   float RmsReport = 0.f;
@@ -208,19 +210,17 @@ extern "C" void EXTI15_10_IRQHandler(void) {
     toggle = !toggle;
 
     /* Determine edge by reading input */
+    SlipRecorder& mInstance = SlipRecorder::Instance();
     if (GPIOB->IDR & GPIO_IDR_ID12) {
-      SlipRecorder& mInstance = static_cast<SlipRecorder&>(*Jaffx::Firmware::instance);
       mInstance.on_PB12_rising();
     } else {
-      SlipRecorder& mInstance = static_cast<SlipRecorder&>(*Jaffx::Firmware::instance);
       mInstance.on_PB12_falling();
     }
   //}
 }
 
 int main() {
-  auto mSlipRecorder = static_cast<SlipRecorder*>(Jaffx::Firmware::instance); 
-  mSlipRecorder->start();
+  SlipRecorder::Instance().start();
   // EXTIptr = mSlipRecorder::IRQHandler
   return 0;
 }

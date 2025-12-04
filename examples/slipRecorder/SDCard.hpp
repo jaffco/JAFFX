@@ -52,8 +52,8 @@ private:
 
 public:
 
-  const bool sdStatus() { return this->sdCardOk; }
-  const bool recording() { return this->isRecording; }
+  bool sdStatus() const { return this->sdCardOk; }
+  bool recording() const { return this->isRecording; }
 
   void InitSDCard() {
     
