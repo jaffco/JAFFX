@@ -170,6 +170,8 @@ void PB12_EXTI_Init(void) {
   NVIC_SetPriority(EXTI15_10_IRQn, 1);
 }
 
+void sleepMode();
+
 class SlipRecorder : public Jaffx::Firmware {
 private:
   SlipRecorder() = default;
@@ -191,6 +193,14 @@ public:
   bool usb_connected = false;
   StateMachine mStateMachine;
 
+  void deinit() {
+    for (auto& led : mLeds) {
+      led.DeInit();
+    }
+    mWavWriter.StopRecording();
+    hardware.StopAudio();
+    hardware.DeInit();
+  }
 
   void init() override {
     debug = true;
@@ -198,7 +208,11 @@ public:
     mLeds[0].Init(seed::D21, GPIO::Mode::OUTPUT);
     mLeds[1].Init(seed::D20, GPIO::Mode::OUTPUT);
     mLeds[2].Init(seed::D19, GPIO::Mode::OUTPUT);
-    
+
+    // System::Delay(2000); // Wait for 2s before going into deep sleep
+    // deinit();
+    // sleepMode(); // Enter sleep mode
+    // return;
     // Initialize SD card
     mWavWriter.InitSDCard();
 
