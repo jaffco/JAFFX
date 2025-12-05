@@ -104,6 +104,9 @@ public:
     powerLED.Write(true); // Indicate power on
   }
 
+  inline void CustomAudioBlockCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) override {
+    // TODO: Use this to send the whole block in to the SD card
+  }
   inline float processAudio(float in) override {
     // TODO: return in and maybe store this somewhere else
     // Write sample to SD card if recording

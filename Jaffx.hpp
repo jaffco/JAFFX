@@ -53,6 +53,19 @@ public:
 	// overridable per-sample operation
 	inline virtual float processAudio(float in) { return in; }
 
+	// TODO: Better way of doing this
+	// basic mono->dual-mono callback
+	inline virtual void CustomAudioBlockCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
+		if (instance->debug) { instance->loadMeter.OnBlockStart(); }
+		instance->blockStart();
+		for (size_t i = 0; i < size; i++) {
+			out[0][i] = instance->processAudio(in[0][i]); // format is in/out[channel][sample]
+			out[1][i] = out[0][i];
+		}
+		instance->blockEnd();
+		if (instance->debug) { instance->loadMeter.OnBlockEnd(); }
+	}
+
 	// overridable audio block start/end operation
 	inline virtual void blockStart() {}
 	inline virtual void blockEnd() {}
@@ -68,24 +81,17 @@ public:
 			const float maxLoad = loadMeter.GetMaxCpuLoad();
 			const float minLoad = loadMeter.GetMinCpuLoad();
 			// print it to the serial connection (as percentages)
-			// hardware.PrintLine("Processing Load:");
-			// hardware.PrintLine("Max: " FLT_FMT3 "%%", FLT_VAR3(maxLoad * 100.0f));
-			// hardware.PrintLine("Avg: " FLT_FMT3 "%%", FLT_VAR3(avgLoad * 100.0f));
-			// hardware.PrintLine("Min: " FLT_FMT3 "%%", FLT_VAR3(minLoad * 100.0f));
-			// System::Delay(1000); // Don't spam the serial!
+			hardware.PrintLine("Processing Load:");
+			hardware.PrintLine("Max: " FLT_FMT3 "%%", FLT_VAR3(maxLoad * 100.0f));
+			hardware.PrintLine("Avg: " FLT_FMT3 "%%", FLT_VAR3(avgLoad * 100.0f));
+			hardware.PrintLine("Min: " FLT_FMT3 "%%", FLT_VAR3(minLoad * 100.0f));
+			System::Delay(1000); // Don't spam the serial!
 		}
 	}
 
-	// basic mono->dual-mono callback
+	// TODO: Better way of doing this
 	static void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
-		if (instance->debug) { instance->loadMeter.OnBlockStart(); }
-		instance->blockStart();
-		for (size_t i = 0; i < size; i++) {
-			out[0][i] = instance->processAudio(in[0][i]); // format is in/out[channel][sample]
-			out[1][i] = out[0][i];
-		}
-		instance->blockEnd();
-		if (instance->debug) { instance->loadMeter.OnBlockEnd(); }
+		instance->CustomAudioBlockCallback(in, out, size);
 	}
 
 	void start() {
@@ -98,14 +104,15 @@ public:
 
 		// init instance and start callback
 		instance = this;
-		this->init();
 		this->initDebug();
+		this->init();
+		
 		hardware.StartAudio(AudioCallback);
 
 		// loop indefinitely
 		while (true) { 
 			this->loop(); 
-			this->debugLoop(); 
+			// this->debugLoop(); Commenting out for SlipRecorder, I need hardware prints but not CPU Load
 		}
 	}
 	
