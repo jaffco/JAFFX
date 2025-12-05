@@ -92,6 +92,26 @@ void TIM13_Init(void) {
     NVIC_SetPriority(TIM8_UP_TIM13_IRQn, 2);
 }
 
+void TIM14_Init(void) {
+    /* Enable TIM14 clock */
+    RCC->APB1LENR |= RCC_APB1LENR_TIM14EN;
+
+    TIM14->CR1 &= ~TIM_CR1_CKD; // (set to same as internal clock = no clock division)
+    TIM14->CNT = 0; // Reset counter
+
+    uint32_t apb1ClkFreq = HAL_RCC_GetPCLK1Freq(); // We find it's 100MHz
+
+    TIM14->PSC = apb1ClkFreq / 10000 - 1; // Prescaler value for 1us timer clock
+    // Set the auto-reload interval for desired debounce time of ~50ms here
+    TIM14->ARR = 7500;   // Auto-reload value   
+    
+    /* Enable update interrupt */
+    TIM14->DIER |= TIM_DIER_UIE;
+    
+    /* Enable TIM14 interrupt in NVIC */
+    NVIC_EnableIRQ(TIM8_TRG_COM_TIM14_IRQn);
+    NVIC_SetPriority(TIM8_TRG_COM_TIM14_IRQn, 2);
+}
 
 
 // For the power button
@@ -231,6 +251,7 @@ public:
     PC0_EXTI_Init();
     PA2_EXTI_Init();
     TIM13_Init();
+    TIM14_Init();
   }
 
   float processAudio(float in) override {
@@ -256,15 +277,26 @@ public:
   void on_PB12_rising() {
       hardware.PrintLine("Rising Edge Detected");
     }
+    void on_PB12_fully_risen() {
+        hardware.PrintLine("SD Card Fully Removed");
+        // // Handle SD card insertion
+        // mStateMachine.getCurrentState()->onSDCardInserted(&mStateMachine);
+    }
 
   void on_PB12_falling() {
     hardware.PrintLine("Falling Edge Detected");
   }
+    void on_PB12_fully_fallen() {
+        hardware.PrintLine("SD Card Fully Inserted");
+        // Handle SD card removal
+        // mStateMachine.getCurrentState()->onSDCardRemoved(&mStateMachine);
+    }
 
   void on_PA2_rising() {
       usb_connected = true;
       hardware.PrintLine("USB Connected");
   }
+  
   void on_PA2_fully_risen() {
     hardware.PrintLine("USB Fully Connected");
   }
@@ -354,34 +386,16 @@ void sleepMode() {
 }
 
 
-
-// (*EXTIptr)()
-bool toggle = false; // global toggle? sus af
-
-// SD Card Connection Detection IRQ Handler
-extern "C" void EXTI15_10_IRQHandler(void) {
-  // Check if EXTI12 triggered the interrupt
-  if (EXTI->PR1 & EXTI_PR1_PR12) {
-    /* Clear pending flag */
-    EXTI->PR1 |= EXTI_PR1_PR12;
-
-  //  Jaffx::Firmware::instance->hardware.SetLed(toggle);
-    toggle = !toggle;
-
-    /* Determine edge by reading input */
-    SlipRecorder& mInstance = SlipRecorder::Instance();
-    if (GPIOB->IDR & GPIO_IDR_ID12) {
-      mInstance.on_PB12_rising();
-    } else {
-      mInstance.on_PB12_falling();
-    }
-  }
-}
-
 inline void EnableUSBDebounceTimer() {
   Jaffx::Firmware::instance->hardware.PrintLine("Starting USB Debounce Timer");
     TIM13->CNT = 0; // Reset the timer counter
     TIM13->CR1 |= TIM_CR1_CEN; // Start the timer
+}
+
+inline void EnableSDDebounceTimer() {
+  Jaffx::Firmware::instance->hardware.PrintLine("Starting SD Debounce Timer");
+    TIM14->CNT = 0; // Reset the timer counter
+    TIM14->CR1 |= TIM_CR1_CEN; // Start the timer
 }
 
 // Power Button IRQ Handler
@@ -390,9 +404,6 @@ extern "C" void EXTI0_IRQHandler(void) {
     if (EXTI->PR1 & EXTI_PR1_PR0) {
         /* Clear pending flag */
         EXTI->PR1 |= EXTI_PR1_PR0;
-
-      //  Jaffx::Firmware::instance->hardware.SetLed(toggle);
-        toggle = !toggle;
 
         /* Determine edge by reading input */
         SlipRecorder& mInstance = SlipRecorder::Instance();
@@ -447,7 +458,6 @@ extern "C" void TIM8_UP_TIM13_IRQHandler(void) {
 
         // Check if the value is still the same as when the timer was started
         if (USB_IRQ_State == NONE) return;
-        Jaffx::Firmware::instance->hardware.SetLed(toggle);
         bool currentState = (GPIOA->IDR & GPIO_IDR_ID2) != 0; // (1 if high, 0 if low)
         if (USB_IRQ_State == RISING && currentState) {
             // We started rising and have settled on rising
@@ -459,11 +469,63 @@ extern "C" void TIM8_UP_TIM13_IRQHandler(void) {
         }
         else {
             // State changed during debounce period; no action taken
-            Jaffx::Firmware::instance->hardware.PrintLine("Not a valid bounce");
+            Jaffx::Firmware::instance->hardware.PrintLine("USB: Not a valid bounce");
         }
         USB_IRQ_State = NONE;
         TIM13->CR1 &= ~TIM_CR1_CEN; // Stop the timer
-        
+    }
+}
+
+volatile InterruptState SD_IRQ_State = NONE;
+// SD Card Connection Detection IRQ Handler
+extern "C" void EXTI15_10_IRQHandler(void) {
+    // Check if EXTI12 triggered the interrupt
+    if (EXTI->PR1 & EXTI_PR1_PR12) {
+        /* Clear pending flag */
+        EXTI->PR1 |= EXTI_PR1_PR12;
+
+        // Check if the debounce timer is already running
+        if (TIM14->CR1 & TIM_CR1_CEN) return;
+
+        // Else, determine if it was a rising or falling edge
+        if (GPIOB->IDR & GPIO_IDR_ID12) {
+            // Rising edge detected
+            SlipRecorder::Instance().on_PB12_rising();
+            // Save the state of what the new value is and we will see if it's the same as before
+            SD_IRQ_State = RISING;
+        } else {
+            // Falling edge detected
+            SlipRecorder::Instance().on_PB12_falling();
+            // Save the state of what the new value is and we will see if it's the same as before
+            SD_IRQ_State = FALLING;
+        }
+        EnableSDDebounceTimer();
+    }
+}
+
+// For the SD Card connection debounce
+extern "C" void TIM8_TRG_COM_TIM14_IRQHandler(void) {
+    // Checks that TIM14 caused the interrupt
+    if (TIM14->SR & TIM_SR_UIF) { // Check update interrupt flag
+        TIM14->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
+
+        if (SD_IRQ_State == NONE) return;
+        bool currentState = (GPIOB->IDR & GPIO_IDR_ID12) != 0; // (1 if high, 0 if low)
+        if (SD_IRQ_State == RISING && currentState) {
+            // We started rising and have settled on rising
+            SlipRecorder::Instance().on_PB12_fully_risen();
+        }
+        else if (SD_IRQ_State == FALLING && !currentState) {
+            // We started falling and have settled on falling
+            SlipRecorder::Instance().on_PB12_fully_fallen();
+        }
+        else {
+            // State changed during debounce period; no action taken
+            Jaffx::Firmware::instance->hardware.PrintLine("SD Card: Not a valid bounce");
+        }
+
+        SD_IRQ_State = NONE;
+        TIM14->CR1 &= ~TIM_CR1_CEN; // Stop the timer
     }
 }
 
