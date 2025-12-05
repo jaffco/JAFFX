@@ -19,7 +19,7 @@ FIL global_wav_file __attribute__((section(".sram1_bss")));
 // TODO: Every interrupt + timer init needs a corresponding deinit function 
 
 // For the USB connection detection
-void PA2_EXTI_Init(void) {
+inline void PA2_EXTI_Init(void) {
     // Jaffx::Firmware::instance->hardware.SetLed(true);
     /* ---------------------- Enable Clocks ---------------------- */
     
@@ -56,8 +56,10 @@ void PA2_EXTI_Init(void) {
     NVIC_SetPriority(EXTI2_IRQn, 1);
 }
 
+// Gonna want to be able to access whether USB is connected in sleep mode, no need for deinitialization
+
 // For the USB connection debounce
-void TIM13_Init(void) {
+inline void TIM13_Init(void) {
     /* Enable TIM13 clock */
     RCC->APB1LENR |= RCC_APB1LENR_TIM13EN;
 
@@ -94,133 +96,14 @@ void TIM13_Init(void) {
     NVIC_SetPriority(TIM8_UP_TIM13_IRQn, 2);
 }
 
-// For the SD Card connection debounce
-void TIM14_Init(void) {
-    /* Enable TIM14 clock */
-    RCC->APB1LENR |= RCC_APB1LENR_TIM14EN;
-
-    TIM14->CR1 &= ~TIM_CR1_CKD; // (set to same as internal clock = no clock division)
-    TIM14->CNT = 0; // Reset counter
-
-    uint32_t apb1ClkFreq = HAL_RCC_GetPCLK1Freq(); // We find it's 100MHz
-
-    TIM14->PSC = apb1ClkFreq / 10000 - 1; // Prescaler value for 1us timer clock
-    // Set the auto-reload interval for desired debounce time of ~50ms here
-    TIM14->ARR = 7500;   // Auto-reload value   
-    
-    /* Enable update interrupt */
-    TIM14->DIER |= TIM_DIER_UIE;
-    
-    /* Enable TIM14 interrupt in NVIC */
-    NVIC_EnableIRQ(TIM8_TRG_COM_TIM14_IRQn);
-    NVIC_SetPriority(TIM8_TRG_COM_TIM14_IRQn, 2);
+inline void EnableUSBDetect(void) {
+    PA2_EXTI_Init();
+    TIM13_Init();
 }
 
-// For pulsing recording LED
-void PA4_GPIO_Init(void) {
-    /* ---------------------- Enable Clocks ---------------------- */
-
-    /* GPIOA clock */
-    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOAEN;
-
-    /* ---------------------- Configure PA4 as Output ---------------------- */
-    /* MODER4 = 01 (output) */
-    GPIOA->MODER &= ~GPIO_MODER_MODE4;
-    GPIOA->MODER |= GPIO_MODER_MODE4_0;
-
-    /* Output type push-pull */
-    GPIOA->OTYPER &= ~GPIO_OTYPER_OT4;
-
-    /* No pull-up / pull-down */
-    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPD4;
-
-    GPIOA->OSPEEDR &= ~GPIO_OSPEEDR_OSPEED4; // Lowest speed
-}
-
-// For pulsing recording LED
-void TIM16_Init(void) {
-    /* Enable TIM16 clock */
-    RCC->APB2ENR |= RCC_APB2ENR_TIM16EN;
-
-    TIM16->CR1 &= ~TIM_CR1_CKD; // (set to same as internal clock = no clock division)
-    TIM16->CNT = 0; // Reset counter
-
-    uint32_t apb2ClkFreq = HAL_RCC_GetPCLK2Freq(); // We find it's 100MHz
-    // Jaffx::Firmware::instance->hardware.PrintLine("apb2ClkFreq: %lu", apb2ClkFreq);
-
-    TIM16->PSC = apb2ClkFreq / 10000 - 1; // Prescaler value for 1us timer clock
-    // Set the auto-reload interval for desired debounce time of ~50ms here
-    TIM16->ARR = 15000;   // Auto-reload value   
-    
-    /* Enable update interrupt */
-    TIM16->DIER |= TIM_DIER_UIE;
-    
-    /* Enable TIM16 interrupt in NVIC */
-    NVIC_EnableIRQ(TIM16_IRQn);
-    NVIC_SetPriority(TIM16_IRQn, 2);
-}
-
-void EnableRecordingLED(void) {
-    /* Enable TIM16 */
-    TIM16->CNT = 0; // Reset counter
-    TIM16->CR1 |= TIM_CR1_CEN;
-    GPIOA->ODR |= GPIO_ODR_OD4; // Turn on LED immediately
-}
-
-void DisableRecordingLED(void) {
-    /* Disable TIM16 */
-    TIM16->CR1 &= ~TIM_CR1_CEN;
-    GPIOA->ODR &= ~GPIO_ODR_OD4; // Turn off LED immediately
-}
-
-extern "C" void TIM16_IRQHandler(void) {
-    if (TIM16->SR & TIM_SR_UIF) { // Check update interrupt flag
-        TIM16->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
-        // Toggle the recording LED
-        GPIOA->ODR ^= GPIO_ODR_OD4;
-    }
-}
-
-// For the power button
-void PC0_EXTI_Init(void) {
-//   Jaffx::Firmware::instance->hardware.SetLed(true);
-  /* ---------------------- Enable Clocks ---------------------- */
-
-  /* GPIOC clock */
-  RCC->AHB4ENR |= RCC_AHB4ENR_GPIOCEN;
-
-  /* ---------------------- Configure PC0 as Input ---------------------- */
-  /* MODER0 = 00 (input) */
-  GPIOC->MODER &= ~GPIO_MODER_MODE0;
-
-  /* No pull-up / pull-down */
-  GPIOC->PUPDR &= ~GPIO_PUPDR_PUPD0;
-
-  /* SYSCFG clock */
-  RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
-
-  /* ---------------------- Connect PC0 to EXTI0 ---------------------- */
-  SYSCFG->EXTICR[0] &= ~SYSCFG_EXTICR1_EXTI0; // Clear EXTI0 bits
-  SYSCFG->EXTICR[0] |= SYSCFG_EXTICR1_EXTI0_PC; // Set EXTI0 to Port C
-
-  /* Rising trigger enabled */
-  EXTI->RTSR1 |= EXTI_RTSR1_TR0;
-
-  /* Falling trigger disabled */
-  EXTI->FTSR1 &= ~EXTI_FTSR1_TR0;
-
-  /* Unmask interrupt */
-  EXTI->IMR1 |= EXTI_IMR1_IM0;
-
-  // SlipRecorder::hardware.PrintLine()
-  /* ---------------------- NVIC Configuration ---------------------- */
-  
-  NVIC_EnableIRQ(EXTI0_IRQn);
-  NVIC_SetPriority(EXTI0_IRQn, 1);
-}
 
 // For the SD Card connection detection
-void PB12_EXTI_Init(void) {
+inline void PB12_EXTI_Init(void) {
 //   Jaffx::Firmware::instance->hardware.SetLed(true);
   /* ---------------------- Enable Clocks ---------------------- */
 
@@ -257,6 +140,192 @@ void PB12_EXTI_Init(void) {
   NVIC_SetPriority(EXTI15_10_IRQn, 1);
 }
 
+// For the SD Card connection debounce
+inline void TIM14_Init(void) {
+    /* Enable TIM14 clock */
+    RCC->APB1LENR |= RCC_APB1LENR_TIM14EN;
+
+    TIM14->CR1 &= ~TIM_CR1_CKD; // (set to same as internal clock = no clock division)
+    TIM14->CNT = 0; // Reset counter
+
+    uint32_t apb1ClkFreq = HAL_RCC_GetPCLK1Freq(); // We find it's 100MHz
+
+    TIM14->PSC = apb1ClkFreq / 10000 - 1; // Prescaler value for 1us timer clock
+    // Set the auto-reload interval for desired debounce time of ~50ms here
+    TIM14->ARR = 7500;   // Auto-reload value   
+    
+    /* Enable update interrupt */
+    TIM14->DIER |= TIM_DIER_UIE;
+    
+    /* Enable TIM14 interrupt in NVIC */
+    NVIC_EnableIRQ(TIM8_TRG_COM_TIM14_IRQn);
+    NVIC_SetPriority(TIM8_TRG_COM_TIM14_IRQn, 2);
+}
+
+inline void EnableSDCardDetect(void) {
+    PB12_EXTI_Init();
+    TIM14_Init();
+}
+
+
+inline void PB12_EXTI_DeInit(void) {
+    /* Disable EXTI line 12 interrupt */
+    EXTI->IMR1 &= ~EXTI_IMR1_IM12;
+    NVIC_DisableIRQ(EXTI15_10_IRQn);
+}
+
+inline void TIM14_DeInit(void) {
+    TIM14->CR1 &= ~TIM_CR1_CEN; // Disable TIM14
+    /* Disable TIM14 update interrupt */
+    NVIC_DisableIRQ(TIM8_TRG_COM_TIM14_IRQn);
+    /* Disable TIM14 clock */
+    RCC->APB1LENR &= ~RCC_APB1LENR_TIM14EN;
+}
+
+inline void DisableSDCardDetect(void) {
+    PB12_EXTI_DeInit();
+    TIM14_DeInit();
+}
+
+
+// For pulsing recording LED
+inline void PA4_GPIO_Init(void) {
+    /* ---------------------- Enable Clocks ---------------------- */
+
+    /* GPIOA clock */
+    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOAEN;
+
+    /* ---------------------- Configure PA4 as Output ---------------------- */
+    /* MODER4 = 01 (output) */
+    GPIOA->MODER &= ~GPIO_MODER_MODE4;
+    GPIOA->MODER |= GPIO_MODER_MODE4_0;
+
+    /* Output type push-pull */
+    GPIOA->OTYPER &= ~GPIO_OTYPER_OT4;
+
+    /* No pull-up / pull-down */
+    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPD4;
+
+    GPIOA->OSPEEDR &= ~GPIO_OSPEEDR_OSPEED4; // Lowest speed
+}
+
+// For pulsing recording LED
+inline void TIM16_Init(void) {
+    /* Enable TIM16 clock */
+    RCC->APB2ENR |= RCC_APB2ENR_TIM16EN;
+
+    TIM16->CR1 &= ~TIM_CR1_CKD; // (set to same as internal clock = no clock division)
+    TIM16->CNT = 0; // Reset counter
+
+    uint32_t apb2ClkFreq = HAL_RCC_GetPCLK2Freq(); // We find it's 100MHz
+    // Jaffx::Firmware::instance->hardware.PrintLine("apb2ClkFreq: %lu", apb2ClkFreq);
+
+    TIM16->PSC = apb2ClkFreq / 10000 - 1; // Prescaler value for 1us timer clock
+    // Set the auto-reload interval for desired debounce time of ~50ms here
+    TIM16->ARR = 15000;   // Auto-reload value   
+    
+    /* Enable update interrupt */
+    TIM16->DIER |= TIM_DIER_UIE;
+    
+    /* Enable TIM16 interrupt in NVIC */
+    NVIC_EnableIRQ(TIM16_IRQn);
+    NVIC_SetPriority(TIM16_IRQn, 2);
+}
+
+inline void EnableRecordingLED(void) {
+    PA4_GPIO_Init();
+    TIM16_Init();
+}
+
+inline void StartRecordingLED(void) {
+    /* Enable TIM16 */
+    TIM16->CNT = 0; // Reset counter
+    TIM16->CR1 |= TIM_CR1_CEN;
+    GPIOA->ODR |= GPIO_ODR_OD4; // Turn on LED immediately
+}
+
+inline void PA4_GPIO_Deinit(void) {
+    // Deinit GPIOA pin 4
+    RCC->AHB4ENR &= ~RCC_AHB4ENR_GPIOAEN; // Disable GPIOA clock
+    // Set to input and pull-down to save power
+    GPIOA->MODER &= ~GPIO_MODER_MODE4; // Set MODER4 to 00 (input)
+
+    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPD4; // Clear PUPDR4 bits
+    GPIOA->PUPDR |= GPIO_PUPDR_PUPD4_1; // Set PUPDR4 to 10 (pull-down)
+}
+
+inline void TIM16_DeInit(void) {
+    TIM16->CR1 &= ~TIM_CR1_CEN; // Disable TIM16
+    /* Disable TIM16 update interrupt */
+    NVIC_DisableIRQ(TIM16_IRQn);
+    /* Disable TIM16 clock */
+    RCC->APB2ENR &= ~RCC_APB2ENR_TIM16EN;
+}
+
+inline void StopRecordingLED(void) {
+    /* Disable TIM16 */
+    TIM16->CR1 &= ~TIM_CR1_CEN;
+    GPIOA->ODR &= ~GPIO_ODR_OD4; // Turn off LED immediately
+}
+
+inline void DisableRecordingLED(void) {
+    StopRecordingLED();
+    /* Disable TIM16 interrupt */
+    TIM16_DeInit();
+    // Deinit GPIOA pin 4
+    PA4_GPIO_Deinit();
+}
+// Actually handle toggling the LED
+extern "C" void TIM16_IRQHandler(void) {
+    if (TIM16->SR & TIM_SR_UIF) { // Check update interrupt flag
+        TIM16->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
+        // Toggle the recording LED
+        GPIOA->ODR ^= GPIO_ODR_OD4;
+    }
+}
+
+// For the power button
+inline void PC0_EXTI_Init(void) {
+//   Jaffx::Firmware::instance->hardware.SetLed(true);
+  /* ---------------------- Enable Clocks ---------------------- */
+
+  /* GPIOC clock */
+  RCC->AHB4ENR |= RCC_AHB4ENR_GPIOCEN;
+
+  /* ---------------------- Configure PC0 as Input ---------------------- */
+  /* MODER0 = 00 (input) */
+  GPIOC->MODER &= ~GPIO_MODER_MODE0;
+
+  /* No pull-up / pull-down */
+  GPIOC->PUPDR &= ~GPIO_PUPDR_PUPD0;
+
+  /* SYSCFG clock */
+  RCC->APB4ENR |= RCC_APB4ENR_SYSCFGEN;
+
+  /* ---------------------- Connect PC0 to EXTI0 ---------------------- */
+  SYSCFG->EXTICR[0] &= ~SYSCFG_EXTICR1_EXTI0; // Clear EXTI0 bits
+  SYSCFG->EXTICR[0] |= SYSCFG_EXTICR1_EXTI0_PC; // Set EXTI0 to Port C
+
+  /* Rising trigger enabled */
+  EXTI->RTSR1 |= EXTI_RTSR1_TR0;
+
+  /* Falling trigger disabled */
+  EXTI->FTSR1 &= ~EXTI_FTSR1_TR0;
+
+  /* Unmask interrupt */
+  EXTI->IMR1 |= EXTI_IMR1_IM0;
+
+  // SlipRecorder::hardware.PrintLine()
+  /* ---------------------- NVIC Configuration ---------------------- */
+  
+  NVIC_EnableIRQ(EXTI0_IRQn);
+  NVIC_SetPriority(EXTI0_IRQn, 1);
+}
+
+inline void EnablePowerButtonDetect(void) {
+    PC0_EXTI_Init();
+}
+
 void sleepMode();
 
 class SlipRecorder : public Jaffx::Firmware {
@@ -288,6 +357,10 @@ public:
     mWavWriter.StopRecording();
     hardware.StopAudio();
     powerLED.Write(false); // Indicate power off
+    powerLED.DeInit();
+    DisableRecordingLED();
+    DisableSDCardDetect();
+    // No need to disable the USB or the Power Button detection as they are needed in sleep
     hardware.DeInit();
   }
 
@@ -317,13 +390,10 @@ public:
     if(mWavWriter.sdStatus()) {
       mWavWriter.StartRecording();
     }
-    PB12_EXTI_Init();
-    PC0_EXTI_Init();
-    PA2_EXTI_Init();
-    TIM13_Init();
-    TIM14_Init();
-    PA4_GPIO_Init();
-    TIM16_Init();
+    // Enable detection interrupts
+    EnableSDCardDetect();
+    EnableUSBDetect();
+    EnablePowerButtonDetect();
     EnableRecordingLED();
 
     powerLED.Write(true); // Indicate power on
@@ -461,13 +531,13 @@ void sleepMode() {
 }
 
 
-inline void EnableUSBDebounceTimer() {
+inline void StartUSBDebounceTimer() {
   Jaffx::Firmware::instance->hardware.PrintLine("Starting USB Debounce Timer");
     TIM13->CNT = 0; // Reset the timer counter
     TIM13->CR1 |= TIM_CR1_CEN; // Start the timer
 }
 
-inline void EnableSDDebounceTimer() {
+inline void StartSDDebounceTimer() {
   Jaffx::Firmware::instance->hardware.PrintLine("Starting SD Debounce Timer");
     TIM14->CNT = 0; // Reset the timer counter
     TIM14->CR1 |= TIM_CR1_CEN; // Start the timer
@@ -520,7 +590,7 @@ extern "C" void EXTI2_IRQHandler(void) {
             // Save the state of what the new value is and we will see if it's the same as before
             USB_IRQ_State = FALLING;
         }
-        EnableUSBDebounceTimer();
+        StartUSBDebounceTimer();
     }
 }
 
@@ -574,7 +644,7 @@ extern "C" void EXTI15_10_IRQHandler(void) {
             // Save the state of what the new value is and we will see if it's the same as before
             SD_IRQ_State = FALLING;
         }
-        EnableSDDebounceTimer();
+        StartSDDebounceTimer();
     }
 }
 
