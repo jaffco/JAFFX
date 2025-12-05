@@ -54,6 +54,46 @@ void PA2_EXTI_Init(void) {
     NVIC_SetPriority(EXTI2_IRQn, 1);
 }
 
+
+void TIM13_Init(void) {
+    /* Enable TIM13 clock */
+    RCC->APB1LENR |= RCC_APB1LENR_TIM13EN;
+
+    TIM13->CR1 &= ~TIM_CR1_CKD; // (set to same as internal clock = no clock division)
+    TIM13->CNT = 0; // Reset counter
+    
+    
+
+    uint32_t apb1ClkFreq = HAL_RCC_GetPCLK1Freq(); // We find it's 100MHz
+
+    // TODO: Find a dynamic way to set PSC and ARR for any APB1 clock frequency
+    //  to achieve a ~x ms wait time (such that PSC and ARR fit in 16-bits)
+
+
+    // Jaffx::Firmware::instance->hardware.PrintLine("apb1ClkFreq: %lu", apb1ClkFreq);
+    // // Calculate prescaler for 1kHz timer clock
+    // uint32_t prescaler = (apb1ClkFreq / 1000) - 1;
+    // // Safety check: PSC must fit in 16-bits
+    // if (prescaler > 0xFFFF) {
+    //     Jaffx::Firmware::instance->hardware.PrintLine("Prescaler overflow: %lu", prescaler);
+    //     // prescaler = 0xFFFF;  // Clamp to max if calculation overflows
+    // }
+    
+    // Use apb1ClkFreq and prescaler to set timer frequency to 1kHz
+    TIM13->PSC = apb1ClkFreq / 1000000 - 1; // Prescaler value for 1us timer clock
+    // Set the auto-reload interval for desired debounce time of ~50ms here
+    TIM13->ARR = 50000-1;   // Auto-reload value for 50ms    
+    
+    /* Enable update interrupt */
+    TIM13->DIER |= TIM_DIER_UIE;
+    
+    /* Enable TIM13 interrupt in NVIC */
+    NVIC_EnableIRQ(TIM8_UP_TIM13_IRQn);
+    NVIC_SetPriority(TIM8_UP_TIM13_IRQn, 2);
+}
+
+
+
 // For the power button
 void PC0_EXTI_Init(void) {
 //   Jaffx::Firmware::instance->hardware.SetLed(true);
@@ -176,6 +216,7 @@ public:
     PB12_EXTI_Init();
     PC0_EXTI_Init();
     PA2_EXTI_Init();
+    TIM13_Init();
   }
 
   float processAudio(float in) override {
@@ -210,10 +251,17 @@ public:
       usb_connected = true;
       hardware.PrintLine("USB Connected");
   }
+  void on_PA2_fully_risen() {
+    hardware.PrintLine("USB Fully Connected");
+  }
 
     void on_PA2_falling() {
         usb_connected = false;
         hardware.PrintLine("USB Disconnected");
+    }
+
+    void on_PA2_fully_fallen() {
+        hardware.PrintLine("USB Fully Disconnected");
     }
 
     void on_PC0_rising() {
@@ -303,7 +351,7 @@ extern "C" void EXTI15_10_IRQHandler(void) {
     /* Clear pending flag */
     EXTI->PR1 |= EXTI_PR1_PR12;
 
-   Jaffx::Firmware::instance->hardware.SetLed(toggle);
+  //  Jaffx::Firmware::instance->hardware.SetLed(toggle);
     toggle = !toggle;
 
     /* Determine edge by reading input */
@@ -316,6 +364,12 @@ extern "C" void EXTI15_10_IRQHandler(void) {
   }
 }
 
+inline void EnableUSBDebounceTimer() {
+  Jaffx::Firmware::instance->hardware.PrintLine("Starting USB Debounce Timer");
+    TIM13->CNT = 0; // Reset the timer counter
+    TIM13->CR1 |= TIM_CR1_CEN; // Start the timer
+}
+
 // Power Button IRQ Handler
 extern "C" void EXTI0_IRQHandler(void) {
   // Check if EXTI0 triggered the interrupt
@@ -323,7 +377,7 @@ extern "C" void EXTI0_IRQHandler(void) {
         /* Clear pending flag */
         EXTI->PR1 |= EXTI_PR1_PR0;
 
-       Jaffx::Firmware::instance->hardware.SetLed(toggle);
+      //  Jaffx::Firmware::instance->hardware.SetLed(toggle);
         toggle = !toggle;
 
         /* Determine edge by reading input */
@@ -334,24 +388,70 @@ extern "C" void EXTI0_IRQHandler(void) {
     }
 }
 
+// Done in this order
+enum InterruptState {
+    FALLING = 0,
+    RISING = 1,  
+    NONE = 2
+};
+
+volatile InterruptState USB_IRQ_State = NONE;
+
 // USB 
 extern "C" void EXTI2_IRQHandler(void) {
     // Check if EXTI2 triggered the interrupt
     if (EXTI->PR1 & EXTI_PR1_PR2) {
         // Clear the interrupt pending bit for EXTI2
         EXTI->PR1 |= EXTI_PR1_PR2;
+
+        // Check if the debounce timer is already running
+        if (TIM13->CR1 & TIM_CR1_CEN) return;
         
-        // Determine if it was a rising or falling edge
+        // Else, determine if it was a rising or falling edge
         if (GPIOA->IDR & GPIO_IDR_ID2) {
             // Rising edge detected
             SlipRecorder::Instance().on_PA2_rising();
+            // Save the state of what the new value is and we will see if it's the same as before
+            USB_IRQ_State = RISING;
+            
         } else {
             // Falling edge detected
             SlipRecorder::Instance().on_PA2_falling();
+            // Save the state of what the new value is and we will see if it's the same as before
+            USB_IRQ_State = FALLING;
         }
+        EnableUSBDebounceTimer();
     }
 }
 
+// For the USB connection debounce
+extern "C" void TIM8_UP_TIM13_IRQHandler(void) {
+    // Checks that TIM13 caused the interrupt
+    Jaffx::Firmware::instance->hardware.PrintLine("TIM13 IRQ Handler Triggered");
+    if (TIM13->SR & TIM_SR_UIF) { // Check update interrupt flag
+        TIM13->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
+
+        // Check if the value is still the same as when the timer was started
+        if (USB_IRQ_State == NONE) return;
+        Jaffx::Firmware::instance->hardware.SetLed(toggle);
+        bool currentState = (GPIOA->IDR & GPIO_IDR_ID2) != 0; // (1 if high, 0 if low)
+        if (USB_IRQ_State == RISING && currentState) {
+            // We started rising and have settled on rising
+            SlipRecorder::Instance().on_PA2_fully_risen();
+        }
+        else if (USB_IRQ_State == FALLING && !currentState) {
+            // We started falling and have settled on falling
+            SlipRecorder::Instance().on_PA2_fully_fallen();
+        }
+        else {
+            // State changed during debounce period; no action taken
+            Jaffx::Firmware::instance->hardware.PrintLine("Not a valid bounce");
+        }
+        USB_IRQ_State = NONE;
+        TIM13->CR1 &= ~TIM_CR1_CEN; // Stop the timer
+        
+    }
+}
 
 int main() {
   SlipRecorder::Instance().start();
