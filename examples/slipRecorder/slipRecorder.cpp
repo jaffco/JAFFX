@@ -16,6 +16,8 @@ FIL global_wav_file __attribute__((section(".sram1_bss")));
 #include "SDCard.hpp"
 
 
+// TODO: Every interrupt + timer init needs a corresponding deinit function 
+
 // For the USB connection detection
 void PA2_EXTI_Init(void) {
     // Jaffx::Firmware::instance->hardware.SetLed(true);
@@ -54,7 +56,7 @@ void PA2_EXTI_Init(void) {
     NVIC_SetPriority(EXTI2_IRQn, 1);
 }
 
-
+// For the USB connection debounce
 void TIM13_Init(void) {
     /* Enable TIM13 clock */
     RCC->APB1LENR |= RCC_APB1LENR_TIM13EN;
@@ -92,6 +94,7 @@ void TIM13_Init(void) {
     NVIC_SetPriority(TIM8_UP_TIM13_IRQn, 2);
 }
 
+// For the SD Card connection debounce
 void TIM14_Init(void) {
     /* Enable TIM14 clock */
     RCC->APB1LENR |= RCC_APB1LENR_TIM14EN;
@@ -113,6 +116,70 @@ void TIM14_Init(void) {
     NVIC_SetPriority(TIM8_TRG_COM_TIM14_IRQn, 2);
 }
 
+// For pulsing recording LED
+void PA4_GPIO_Init(void) {
+    /* ---------------------- Enable Clocks ---------------------- */
+
+    /* GPIOA clock */
+    RCC->AHB4ENR |= RCC_AHB4ENR_GPIOAEN;
+
+    /* ---------------------- Configure PA4 as Output ---------------------- */
+    /* MODER4 = 01 (output) */
+    GPIOA->MODER &= ~GPIO_MODER_MODE4;
+    GPIOA->MODER |= GPIO_MODER_MODE4_0;
+
+    /* Output type push-pull */
+    GPIOA->OTYPER &= ~GPIO_OTYPER_OT4;
+
+    /* No pull-up / pull-down */
+    GPIOA->PUPDR &= ~GPIO_PUPDR_PUPD4;
+
+    GPIOA->OSPEEDR &= ~GPIO_OSPEEDR_OSPEED4; // Lowest speed
+}
+
+// For pulsing recording LED
+void TIM16_Init(void) {
+    /* Enable TIM16 clock */
+    RCC->APB2ENR |= RCC_APB2ENR_TIM16EN;
+
+    TIM16->CR1 &= ~TIM_CR1_CKD; // (set to same as internal clock = no clock division)
+    TIM16->CNT = 0; // Reset counter
+
+    uint32_t apb2ClkFreq = HAL_RCC_GetPCLK2Freq(); // We find it's 100MHz
+    // Jaffx::Firmware::instance->hardware.PrintLine("apb2ClkFreq: %lu", apb2ClkFreq);
+
+    TIM16->PSC = apb2ClkFreq / 10000 - 1; // Prescaler value for 1us timer clock
+    // Set the auto-reload interval for desired debounce time of ~50ms here
+    TIM16->ARR = 15000;   // Auto-reload value   
+    
+    /* Enable update interrupt */
+    TIM16->DIER |= TIM_DIER_UIE;
+    
+    /* Enable TIM16 interrupt in NVIC */
+    NVIC_EnableIRQ(TIM16_IRQn);
+    NVIC_SetPriority(TIM16_IRQn, 2);
+}
+
+void EnableRecordingLED(void) {
+    /* Enable TIM16 */
+    TIM16->CNT = 0; // Reset counter
+    TIM16->CR1 |= TIM_CR1_CEN;
+    GPIOA->ODR |= GPIO_ODR_OD4; // Turn on LED immediately
+}
+
+void DisableRecordingLED(void) {
+    /* Disable TIM16 */
+    TIM16->CR1 &= ~TIM_CR1_CEN;
+    GPIOA->ODR &= ~GPIO_ODR_OD4; // Turn off LED immediately
+}
+
+extern "C" void TIM16_IRQHandler(void) {
+    if (TIM16->SR & TIM_SR_UIF) { // Check update interrupt flag
+        TIM16->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
+        // Toggle the recording LED
+        GPIOA->ODR ^= GPIO_ODR_OD4;
+    }
+}
 
 // For the power button
 void PC0_EXTI_Init(void) {
@@ -208,6 +275,7 @@ public:
   SlipRecorder& operator=(SlipRecorder&&) = delete;
 
   GPIO mLeds[3];
+  GPIO powerLED;
   float RmsReport = 0.f;
   SDCardWavWriter<> mWavWriter;  // Use default template parameter (4096 bytes)
   bool usb_connected = false;
@@ -219,6 +287,7 @@ public:
     }
     mWavWriter.StopRecording();
     hardware.StopAudio();
+    powerLED.Write(false); // Indicate power off
     hardware.DeInit();
   }
 
@@ -228,6 +297,7 @@ public:
     mLeds[0].Init(seed::D21, GPIO::Mode::OUTPUT);
     mLeds[1].Init(seed::D20, GPIO::Mode::OUTPUT);
     mLeds[2].Init(seed::D19, GPIO::Mode::OUTPUT);
+    powerLED.Init(seed::D22, GPIO::Mode::OUTPUT);
 
     // System::Delay(2000); // Wait for 2s before going into deep sleep
     // deinit();
@@ -252,6 +322,11 @@ public:
     PA2_EXTI_Init();
     TIM13_Init();
     TIM14_Init();
+    PA4_GPIO_Init();
+    TIM16_Init();
+    EnableRecordingLED();
+
+    powerLED.Write(true); // Indicate power on
   }
 
   float processAudio(float in) override {
