@@ -292,8 +292,8 @@ inline void PC0_EXTI_Init(void) {
   /* Rising trigger enabled */
   EXTI->RTSR1 |= EXTI_RTSR1_TR0;
 
-  /* Falling trigger disabled */
-  EXTI->FTSR1 &= ~EXTI_FTSR1_TR0;
+  /* Falling trigger enabled (for long-press detection) */
+  EXTI->FTSR1 |= EXTI_FTSR1_TR0;
 
   /* Unmask interrupt */
   EXTI->IMR1 |= EXTI_IMR1_IM0;

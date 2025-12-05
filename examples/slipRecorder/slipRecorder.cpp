@@ -204,8 +204,8 @@ public:
         // TODO: We don't really care about this without the battery
     }
 
-    inline void on_PC0_rising() {
-        hardware.PrintLine("Power Button Pressed");
+    inline void on_PC0_short_press() {
+        hardware.PrintLine("Power Button Short-Pressed");
         switch (currentState) {
             case SlipRecorderState::RECORDING: {
                 // TODO: We want to save the recording safely and then shutdown gracefully
@@ -337,6 +337,9 @@ inline void StartSDDebounceTimer() {
     TIM14->CR1 |= TIM_CR1_CEN; // Start the timer
 }
 
+
+volatile uint32_t powerButtonInitiallyPressedAtTimeUs = 0;
+volatile bool powerButtonPressedDown = false;
 // Power Button IRQ Handler
 extern "C" void EXTI0_IRQHandler(void) {
   // Check if EXTI0 triggered the interrupt
@@ -346,8 +349,29 @@ extern "C" void EXTI0_IRQHandler(void) {
 
         /* Determine edge by reading input */
         SlipRecorder& mInstance = SlipRecorder::Instance();
-        if (GPIOC->IDR & GPIO_IDR_ID0) {
-          mInstance.on_PC0_rising();
+        if (GPIOC->IDR & GPIO_IDR_ID0) { // Rising edge detected
+            // Get System::GetUs(), set bool powerButtonPressActive = true;
+            powerButtonInitiallyPressedAtTimeUs = System::GetUs();
+            powerButtonPressedDown = true;
+        //   mInstance.on_PC0_rising(); // This logic will go in falling edge now
+        }
+        else { // Falling edge detected
+            // If powerButtonPressActive, see if time elapsed >= ~4 sec, reset bool
+            //  if it is, run long press code (infinite timeout mode)
+            //  else, run short press code (power button pressed rising edge)
+            if (powerButtonPressedDown) {
+                powerButtonPressedDown = false;
+                uint32_t timeNow = System::GetUs();
+                uint32_t timeElapsedUs = timeNow - powerButtonInitiallyPressedAtTimeUs;
+                if (timeElapsedUs >= 4000000) {
+                    // If it was pressed down for more than 4 sec, go into infinite timeout mode
+                    System::ResetToBootloader(System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
+                }
+                else {
+                    // Run the normal button pressed
+                    mInstance.on_PC0_short_press();
+                }
+            }
         }
     }
 }
