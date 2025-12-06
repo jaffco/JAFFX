@@ -661,6 +661,9 @@ public:
   }
 
   inline void init() override {
+    System::Delay(100);
+    hardware.StartLog(true);
+    System::Delay(100);
     hardware.PrintLine("Starting Init");
     // Initialize LEDs
     mLeds[0].Init(seed::D21, GPIO::Mode::OUTPUT);

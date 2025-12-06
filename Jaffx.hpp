@@ -36,7 +36,7 @@ public:
 
 	// loadMeter for debugging, bool for toggle
 	CpuLoadMeter loadMeter;
-	bool debug = true;
+	bool debug = false;
 
 public:
 	// overridable init function
@@ -120,8 +120,8 @@ public:
 
 		// init instance and start callback
 		instance = this;
-		this->initDebug();
 		this->init();
+		this->initDebug();
 		
 		hardware.StartAudio(AudioCallback);
 
