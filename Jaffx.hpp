@@ -36,7 +36,7 @@ public:
 
 	// loadMeter for debugging, bool for toggle
 	CpuLoadMeter loadMeter;
-	bool debug = false;
+	bool debug = true;
 
 public:
 	// overridable init function
@@ -46,7 +46,7 @@ public:
 	inline void initDebug() {
 		if (debug) {
 			hardware.StartLog(true);
-			loadMeter.Init(hardware.AudioSampleRate(), hardware.AudioBlockSize());
+			// loadMeter.Init(hardware.AudioSampleRate(), hardware.AudioBlockSize());
 		}
 	}
 
