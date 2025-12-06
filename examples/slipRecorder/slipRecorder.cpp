@@ -662,7 +662,7 @@ public:
 
   inline void init() override {
     System::Delay(100);
-    hardware.StartLog(true);
+    // hardware.StartLog(true);
     System::Delay(100);
     hardware.PrintLine("Starting Init");
     // Initialize LEDs
@@ -805,12 +805,15 @@ public:
 
   inline void on_PB12_fully_fallen() {
     hardware.PrintLine("SD Card Fully Inserted");
+    hardware.PrintLine("Resetting to Bootloader...");
+    System::ResetToBootloader(daisy::System::DAISY);
     switch (currentState) {
 
       case SlipRecorderState::RECORDING: {
       /**
        * Should not be possible - warn!!!!
        */
+        hardware.PrintLine("Bro I'm already recording wtf");
       }
       break;
 
