@@ -491,28 +491,25 @@ public:
 */
 
   void WriteAudioBlock(float* bufferLeft, size_t size) {
-    if(!isRecording) {
-      return;
-    }
+    // if(!isRecording) {
+    //   return;
+    // } // No need to check this again, it was just checked before calling this function to begin with!!!
+    memcpy(audioBuffer + bufferIndex, bufferLeft, size * sizeof(float));
+    bufferIndex += size;
+    recordedSamples += size;
 
-    // q15_t convertedLeft[size];
-    // arm_float_to_q15(bufferLeft, convertedLeft, size);
-    for (size_t i = 0; i < size; i++) {
-        audioBuffer[bufferIndex++] = bufferLeft[i];
-        recordedSamples++;
-    }
     FlushAudioBuffer();
     
     if(recordedSamples % (48000 * 5) == 0) {
         UpdateWavHeader();  // Update header with current size
-        f_sync(&wav_file);
+        // f_sync(&wav_file); // UpdateWavHeader already takes care of a file sync
     }
 
   }
 
   // TODO: Proper error handling
-  void FlushAudioBuffer() {
-    if(!isRecording || bufferIndex == 0) {
+  inline void FlushAudioBuffer() {
+    if(/*!isRecording || */bufferIndex == 0) { // No need to check whether recording as the only instances this is called in, it's already checked
       return;
     }
     
@@ -523,7 +520,7 @@ public:
     
     if(res != FR_OK || bytes_written != bytes_to_write) {
       // Error writing - stop recording to prevent corruption
-      StopRecording();
+      StopRecording(); // TODO: Calling this here causes a terrible recursion error
       sdCardOk = false;
       return;
     }
