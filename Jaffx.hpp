@@ -66,6 +66,18 @@ public:
 		if (instance->debug) { instance->loadMeter.OnBlockEnd(); }
 	}
 
+	// See: https://forum.electro-smith.com/t/what-is-the-difference-between-the-two-types-of-audio-callback/454/2
+	inline virtual void CustomInterleavedAudioBlockCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size) {
+		// Format for this is { L0, R0, L1, R1, . . . LN, RN }
+		if (instance->debug) { instance->loadMeter.OnBlockStart(); }
+		instance->blockStart();
+		for (size_t i = 0; i < size; i++) {
+			out[i] = in[i];
+		}
+		instance->blockEnd();
+		if (instance->debug) { instance->loadMeter.OnBlockEnd(); }
+	}
+
 	// overridable audio block start/end operation
 	inline virtual void blockStart() {}
 	inline virtual void blockEnd() {}
@@ -92,6 +104,10 @@ public:
 	// TODO: Better way of doing this
 	static void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) {
 		instance->CustomAudioBlockCallback(in, out, size);
+	}
+
+	static void InterleavingAudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size) {
+		instance->CustomInterleavedAudioBlockCallback(in, out, size);
 	}
 
 	void start() {

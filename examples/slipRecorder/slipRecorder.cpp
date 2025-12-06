@@ -350,11 +350,11 @@ public:
     header.fmt[0] = 'f'; header.fmt[1] = 'm'; header.fmt[2] = 't'; header.fmt[3] = ' ';
     header.fmtSize = 16;
     header.audioFormat = 3; // 1 - PCM, 3 - IEEE float
-    header.numChannels = 1; // Mono
+    header.numChannels = 2; // Stereo
     header.sampleRate = 48000;
-    header.byteRate = 48000 * 4; // SampleRate * NumChannels * BitsPerSample/8
-    header.blockAlign = 4; // NumChannels * BitsPerSample/8
-    header.bitsPerSample = 32; // b/c float-32
+    header.bitsPerSample = 32; // b/c float-32 - define here since we use it for other fields below
+    header.blockAlign = header.numChannels * (header.bitsPerSample / 8); // NumChannels * BitsPerSample/8
+    header.byteRate = header.sampleRate * header.blockAlign; // SampleRate * NumChannels * BitsPerSample/8
     header.data[0] = 'd'; header.data[1] = 'a'; header.data[2] = 't'; header.data[3] = 'a';
     header.dataSize = 0; // Will be updated
     
@@ -491,14 +491,33 @@ public:
   }
 */
 
-  // TODO: Implement stereo
+//   void WriteInterleavedAudioBlock(const float* buffer, size_t size) {
+//     memcpy(audioBuffer + bufferIndex, buffer, size * sizeof(float));
+//     bufferIndex += size;
+//     recordedSamples += size << 1; // divide by 2 since both left and right channels are here
+//     FlushAudioBuffer();
+//     if (this->sdSyncNeeded) {
+//         this->sdSyncNeeded = false;
+//         UpdateWavHeader(); // Update header with current filesize
+//     }
+//   }
+
+  // TODO: Fix stereo
   void WriteAudioBlock(float* bufferLeft, float* bufferRight, size_t size) {
     // if(!isRecording) {
     //   return;
     // } // No need to check this again, it was just checked before calling this function to begin with!!!
-    memcpy(audioBuffer + bufferIndex, bufferLeft, size * sizeof(float));
-    bufferIndex += size;
-    recordedSamples += size;
+    for (size_t i = 0; i < size; i++) {
+        audioBuffer[bufferIndex++] = bufferLeft[i];   // left sample
+        audioBuffer[bufferIndex++] = bufferRight[i];  // right sample
+    }
+
+    // UINT bw;
+    // f_write(file, interleaved, n * 2 * sizeof(float), &bw);
+
+    // memcpy(audioBuffer + bufferIndex, bufferLeft, size * sizeof(float));
+    // bufferIndex += size;
+    recordedSamples += size;  // Both L and R channels = 2 * size total samples
 
     FlushAudioBuffer();
     
@@ -554,7 +573,7 @@ public:
     FSIZE_t current_pos = f_tell(&wav_file);
     
     // Calculate actual data size
-    unsigned int dataSize = recordedSamples * sizeof(float);
+    unsigned int dataSize = recordedSamples * sizeof(float) * 2;  // recordedSamples already includes both L and R
     unsigned int fileSize = dataSize + sizeof(WavHeader) - 8; // Exclude RIFF header (8 bytes)
     
     // Seek to file size field (offset 4)
@@ -668,6 +687,12 @@ public:
       hardware.SetLed(true);
     }
   }
+
+//   inline void CustomInterleavedAudioBlockCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size) override {
+//     if (!mWavWriter.recording()) return;
+//     // memcpy(dmaAudioBuffer, in, size * sizeof(float));
+//     mWavWriter.WriteInterleavedAudioBlock(in, size);
+//   }
 
   inline void CustomAudioBlockCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) override {
     // TODO: Use this to send the whole block in to the SD card
@@ -1098,7 +1123,7 @@ extern "C" void TIM17_IRQHandler(void) {
         TIM17->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
         // Notify the main loop it's time to sync the SD card data
         // SlipRecorder::Instance().sdSyncNeeded = true;
-        Jaffx::Firmware::instance->hardware.PrintLine("Starting Sync now...");
+        Jaffx::Firmware::instance->hardware.PrintLine("Triggering Sync now...");
         SlipRecorder::Instance().mWavWriter.sdSyncNeeded = true;
     }
 }
