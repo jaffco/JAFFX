@@ -42,7 +42,7 @@ private:
   unsigned int recordStartTime = 0;
 
   // Audio buffer (template parameter allows flexible sizing)
-  int16_t audioBuffer[WriteBufferSize];
+  float audioBuffer[WriteBufferSize];
   size_t bufferIndex = 0;
 
   // WAV file header structure
@@ -349,12 +349,12 @@ public:
     header.wave[0] = 'W'; header.wave[1] = 'A'; header.wave[2] = 'V'; header.wave[3] = 'E';
     header.fmt[0] = 'f'; header.fmt[1] = 'm'; header.fmt[2] = 't'; header.fmt[3] = ' ';
     header.fmtSize = 16;
-    header.audioFormat = 1; // PCM
+    header.audioFormat = 3; // 1 - PCM, 3 - IEEE float
     header.numChannels = 1; // Mono
     header.sampleRate = 48000;
-    header.byteRate = 48000 * 2; // SampleRate * NumChannels * BitsPerSample/8
-    header.blockAlign = 2; // NumChannels * BitsPerSample/8
-    header.bitsPerSample = 16;
+    header.byteRate = 48000 * 4; // SampleRate * NumChannels * BitsPerSample/8
+    header.blockAlign = 4; // NumChannels * BitsPerSample/8
+    header.bitsPerSample = 32; // b/c float-32
     header.data[0] = 'd'; header.data[1] = 'a'; header.data[2] = 't'; header.data[3] = 'a';
     header.dataSize = 0; // Will be updated
     
@@ -461,6 +461,7 @@ public:
     return recordNum;
   }
 
+  /*
   void WriteAudioSample(float sample) {
     if(!isRecording) {
       return;
@@ -487,16 +488,17 @@ public:
       f_sync(&wav_file);
     }
   }
+*/
 
   void WriteAudioBlock(float* bufferLeft, size_t size) {
     if(!isRecording) {
       return;
     }
 
-    q15_t convertedLeft[size];
-    arm_float_to_q15(bufferLeft, convertedLeft, size);
+    // q15_t convertedLeft[size];
+    // arm_float_to_q15(bufferLeft, convertedLeft, size);
     for (size_t i = 0; i < size; i++) {
-        audioBuffer[bufferIndex++] = convertedLeft[i];
+        audioBuffer[bufferIndex++] = bufferLeft[i];
         recordedSamples++;
     }
     FlushAudioBuffer();
@@ -515,7 +517,7 @@ public:
     }
     
     UINT bytes_written;
-    size_t bytes_to_write = bufferIndex * sizeof(int16_t);
+    size_t bytes_to_write = bufferIndex * sizeof(float);
     
     FRESULT res = f_write(&wav_file, audioBuffer, bytes_to_write, &bytes_written);
     
@@ -553,7 +555,7 @@ public:
     FSIZE_t current_pos = f_tell(&wav_file);
     
     // Calculate actual data size
-    unsigned int dataSize = recordedSamples * sizeof(short);
+    unsigned int dataSize = recordedSamples * sizeof(float);
     unsigned int fileSize = dataSize + sizeof(WavHeader) - 8; // Exclude RIFF header (8 bytes)
     
     // Seek to file size field (offset 4)
@@ -680,9 +682,10 @@ public:
             dmaAudioBufferCorrespondingChannel[j] = inChannel[j];
         }
     }
-    for (size_t i = 0; i < size; i++) {
-        mWavWriter.WriteAudioSample(dmaAudioBuffer[0][i]); // format is in/out[channel][sample]
-    }
+    mWavWriter.WriteAudioBlock(dmaAudioBuffer[0], size);
+    // for (size_t i = 0; i < size; i++) {
+    //     mWavWriter.WriteAudioSample(dmaAudioBuffer[0][i]); // format is in/out[channel][sample]
+    // }
     
 
     
