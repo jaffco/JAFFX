@@ -25,7 +25,7 @@ FatFSInterface global_fsi_handler __attribute__((section(".sram1_bss")));
 FIL global_wav_file __attribute__((section(".sram1_bss")));
 #include "SDCard.hpp"
 
-float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE];
+float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE/2];
 
 template<size_t WriteBufferSize = 4096>
 class SDCardWavWriter {
@@ -488,6 +488,26 @@ public:
     }
   }
 
+  void WriteAudioBlock(float* bufferLeft, size_t size) {
+    if(!isRecording) {
+      return;
+    }
+
+    q15_t convertedLeft[size];
+    arm_float_to_q15(bufferLeft, convertedLeft, size);
+    for (size_t i = 0; i < size; i++) {
+        audioBuffer[bufferIndex++] = convertedLeft[i];
+        recordedSamples++;
+    }
+    FlushAudioBuffer();
+    
+    if(recordedSamples % (48000 * 5) == 0) {
+        UpdateWavHeader();  // Update header with current size
+        f_sync(&wav_file);
+    }
+
+  }
+
   // TODO: Proper error handling
   void FlushAudioBuffer() {
     if(!isRecording || bufferIndex == 0) {
@@ -661,7 +681,7 @@ public:
         }
     }
     for (size_t i = 0; i < size; i++) {
-        mWavWriter.WriteAudioSample(in[0][i]); // format is in/out[channel][sample]
+        mWavWriter.WriteAudioSample(dmaAudioBuffer[0][i]); // format is in/out[channel][sample]
     }
     
 
