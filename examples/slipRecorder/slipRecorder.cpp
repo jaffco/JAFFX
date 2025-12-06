@@ -199,8 +199,8 @@ public:
     // Initialize SDMMC hardware
     SdmmcHandler::Config sd_cfg;
     sd_cfg.Defaults();
-    sd_cfg.speed = SdmmcHandler::Speed::STANDARD;
-    sd_cfg.width = SdmmcHandler::BusWidth::BITS_1; // 1-bit mode for compatibility
+    sd_cfg.speed = SdmmcHandler::Speed::FAST;
+    sd_cfg.width = SdmmcHandler::BusWidth::BITS_4; // Take advantage of full-hardware setup available
     sd_cfg.clock_powersave = false;
     
     if(sdmmc_handler.Init(sd_cfg) != SdmmcHandler::Result::OK) {
