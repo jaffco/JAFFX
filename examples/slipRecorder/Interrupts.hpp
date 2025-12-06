@@ -1,3 +1,6 @@
+#ifndef INTERRUPTS_HPP
+#define INTERRUPTS_HPP
+
 #include "stm32h750xx.h"
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_pwr_ex.h"
@@ -170,6 +173,59 @@ inline void DisableSDCardDetect(void) {
     TIM14_DeInit();
 }
 
+// This timer will be used to trigger audio file syncs w/ SD card periodically in
+// case of loss of power
+inline void TIM17_Init(void) {
+    RCC->APB2ENR |= RCC_APB2ENR_TIM17EN;
+
+    TIM17->CR1 &= ~TIM_CR1_CKD;
+    TIM17->CNT = 0;
+
+    uint32_t apb2ClkFreq = HAL_RCC_GetPCLK2Freq();  // 100 MHz
+
+    /* Timer tick = 0.2 ms  →  5000 Hz */
+    TIM17->PSC = (apb2ClkFreq / 5000) - 1;   // = 19999
+
+    /* ARR for 2 seconds */
+    TIM17->ARR = 25000;
+    // 10000 gives us 2 sec
+    // 25000 gives us 5 sec
+    // 50000 gives us 10sec
+
+    TIM17->DIER |= TIM_DIER_UIE;
+
+    NVIC_EnableIRQ(TIM17_IRQn);
+    NVIC_SetPriority(TIM17_IRQn, 3);
+}
+
+inline void EnableSDSyncTimer(void) {
+    TIM17_Init();
+}
+
+
+inline void TIM17_DeInit(void) {
+    TIM17->CR1 &= ~TIM_CR1_CEN; // Disable TIM17
+    /* Disable TIM17 update interrupt */
+    NVIC_DisableIRQ(TIM17_IRQn);
+    /* Disable TIM17 clock */
+    RCC->APB2ENR &= ~RCC_APB2ENR_TIM17EN;
+}
+
+
+inline void DisableSDSyncTimer(void) {
+    TIM17_DeInit();
+}
+
+inline void StartPeriodicSDSync(void) {
+    TIM17->CNT = 0;
+    TIM17->CR1 |= TIM_CR1_CEN;
+}
+
+inline void StopPeriodicSDSync(void) {
+    TIM17->CR1 &= ~TIM_CR1_CEN;
+}
+
+
 
 // For pulsing recording LED
 inline void PA4_GPIO_Init(void) {
@@ -308,3 +364,5 @@ inline void PC0_EXTI_Init(void) {
 inline void EnablePowerButtonDetect(void) {
     PC0_EXTI_Init();
 }
+
+#endif // INTERRUPTS_HPP

@@ -7,7 +7,7 @@
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_pwr_ex.h"
 
-
+#include "Interrupts.hpp"
 
 // State machine stuffs
 enum class SlipRecorderState : unsigned char { // inherit from unsigned char to save space
@@ -68,7 +68,7 @@ private:
   } __attribute__((packed));
 
 public:
-
+  volatile bool sdSyncNeeded = false;
   bool sdStatus() const { return this->sdCardOk; }
   bool recording() const { return this->isRecording; }
 
@@ -383,6 +383,7 @@ public:
     // Sync to ensure header is written
     f_sync(&wav_file);
     Jaffx::Firmware::instance->hardware.PrintLine("Starting recording!");
+    StartPeriodicSDSync();
     return true;
   }
 #define JAFFX_RECORD_COUNTER_FILENAME "JAFFX_SlipRecorder/.rec_counter"
@@ -500,9 +501,9 @@ public:
 
     FlushAudioBuffer();
     
-    if(recordedSamples % (48000 * 5) == 0) {
-        UpdateWavHeader();  // Update header with current size
-        // f_sync(&wav_file); // UpdateWavHeader already takes care of a file sync
+    if (this->sdSyncNeeded) {
+        this->sdSyncNeeded = false;
+        UpdateWavHeader(); // Update header with current filesize
     }
 
   }
@@ -573,8 +574,6 @@ public:
 
 };
 
-
-#include "Interrupts.hpp"
 
 void sleepMode();
 
@@ -648,6 +647,7 @@ public:
     // EnableUSBDetect();
     // EnablePowerButtonDetect();
     EnableRecordingLED();
+    EnableSDSyncTimer();
 
     
     // Start recording if SD card is OK
@@ -1089,6 +1089,18 @@ extern "C" void TIM8_TRG_COM_TIM14_IRQHandler(void) {
         TIM14->CR1 &= ~TIM_CR1_CEN; // Stop the timer
     }
 }
+
+// For periodically syncing the SD card
+extern "C" void TIM17_IRQHandler(void) {
+    if (TIM17->SR & TIM_SR_UIF) { // Check update interrupt flag
+        TIM17->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
+        // Notify the main loop it's time to sync the SD card data
+        // SlipRecorder::Instance().sdSyncNeeded = true;
+        Jaffx::Firmware::instance->hardware.PrintLine("Starting Sync now...");
+        SlipRecorder::Instance().mWavWriter.sdSyncNeeded = true;
+    }
+}
+
 
 int main() {
   SlipRecorder::Instance().start();
