@@ -32,7 +32,7 @@ public:
 
 	// It's handy to have these numbers on tap
 	const int samplerate = 48000;
-	const int buffersize = 128;
+	const int buffersize = 256;
 
 	// loadMeter for debugging, bool for toggle
 	CpuLoadMeter loadMeter;
