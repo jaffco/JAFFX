@@ -491,7 +491,8 @@ public:
   }
 */
 
-  void WriteAudioBlock(float* bufferLeft, size_t size) {
+  // TODO: Implement stereo
+  void WriteAudioBlock(float* bufferLeft, float* bufferRight, size_t size) {
     // if(!isRecording) {
     //   return;
     // } // No need to check this again, it was just checked before calling this function to begin with!!!
@@ -680,7 +681,7 @@ public:
         //     dmaAudioBufferCorrespondingChannel[j] = inChannel[j];
         // }
     }
-    mWavWriter.WriteAudioBlock(dmaAudioBuffer[0], size);
+    mWavWriter.WriteAudioBlock(dmaAudioBuffer[0], dmaAudioBuffer[1], size);
     // for (size_t i = 0; i < size; i++) {
     //     mWavWriter.WriteAudioSample(dmaAudioBuffer[0][i]); // format is in/out[channel][sample]
     // }
