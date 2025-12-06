@@ -675,9 +675,10 @@ public:
     for (size_t i = 0; i < 2; i++) {
         const float* inChannel = in[i]; 
         float* dmaAudioBufferCorrespondingChannel = dmaAudioBuffer[i];
-        for (size_t j = 0; j < size; j++) {
-            dmaAudioBufferCorrespondingChannel[j] = inChannel[j];
-        }
+        memcpy(dmaAudioBufferCorrespondingChannel, inChannel, size * sizeof(float));
+        // for (size_t j = 0; j < size; j++) {
+        //     dmaAudioBufferCorrespondingChannel[j] = inChannel[j];
+        // }
     }
     mWavWriter.WriteAudioBlock(dmaAudioBuffer[0], size);
     // for (size_t i = 0; i < size; i++) {
