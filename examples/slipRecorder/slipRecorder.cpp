@@ -1167,8 +1167,10 @@ extern "C" void TIM17_IRQHandler(void) {
     TIM17->SR &= ~TIM_SR_UIF; // Clear update interrupt flag
     // Notify the main loop it's time to sync the SD card data
     // SlipRecorder::Instance().sdSyncNeeded = true;
-    Jaffx::Firmware::instance->hardware.PrintLine("Triggering Sync now...");
-    SlipRecorder::Instance().mWavWriter.sdSyncNeeded = true;
+    if (SlipRecorder::Instance().mWavWriter.recording()) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Triggering Sync now...");
+      SlipRecorder::Instance().mWavWriter.sdSyncNeeded = true;
+    }
   }
 }
 
