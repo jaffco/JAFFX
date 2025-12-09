@@ -33,6 +33,9 @@ struct Settings {
  */
 struct InterfaceManager {
   GPIO mLed;
+  GPIO mLedLP;  // Lowpass mode LED on D25
+  GPIO mLedBP;  // Bandpass mode LED on D26
+  GPIO mLedHP;  // Highpass mode LED on D27
   Switch mFootswitch;
   AnalogControl mVolKnob;
   AnalogControl mDriveKnob;
@@ -62,11 +65,14 @@ struct InterfaceManager {
 
     // init ctrls
     mLed.Init(seed::A0, GPIO::Mode::OUTPUT);
+    mLedLP.Init(seed::D25, GPIO::Mode::OUTPUT);  // LP mode LED
+    mLedBP.Init(seed::D26, GPIO::Mode::OUTPUT);  // BP mode LED
+    mLedHP.Init(seed::D27, GPIO::Mode::OUTPUT);  // HP mode LED
     mFootswitch.Init(seed::A1, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
     mVolKnob.Init(hw.adc.GetPtr(0), hw.AudioSampleRate());   // Vol knob on ADC channel 0
     mDriveKnob.Init(hw.adc.GetPtr(1), hw.AudioSampleRate()); // Drive knob on ADC channel 1
     mJKnob.Init(hw.adc.GetPtr(2), hw.AudioSampleRate());     // J knob on ADC channel 2
-    mModeEncoder.Init(seed::A3, seed::A4, seed::A0); // Encoder with button pin
+    mModeEncoder.Init(seed::A3, seed::A4, seed::D28); // Encoder (button not connected, using unused pin)
     mLed.Write(localSettings->toggleState);
   }
 
@@ -76,15 +82,22 @@ struct InterfaceManager {
     mFootswitch.Debounce();
     mModeEncoder.Debounce();
 
+    if (mFootswitch.TimeHeldMs() > 5000) { // 5 second hold to reset to bootloader
+      System::ResetToBootloader(daisy::System::DAISY_INFINITE_TIMEOUT);
+    }
+
     if (mFootswitch.FallingEdge()) { // invert toggle state
       localSettings->toggleState = !localSettings->toggleState;
     }
 
-    if (mModeEncoder.Increment()) {
-      int* mode = &localSettings->mode;
-      mode++;
-      if (*mode > 2) { 
-        *mode = 0; 
+    int enc = mModeEncoder.Increment();
+    if (enc != 0) {
+      localSettings->mode -= enc;  // Inverted direction
+      // Wrap around 0-2
+      if (localSettings->mode > 2) { 
+        localSettings->mode = 0; 
+      } else if (localSettings->mode < 0) {
+        localSettings->mode = 2;
       }
     }
 
@@ -92,12 +105,20 @@ struct InterfaceManager {
     localSettings->drive = mDriveKnob.Process();
     localSettings->J = mJKnob.Process();
 
-    saveSettings();
+    // saveSettings();
   }
 
   void processOutput() {
     // set led based on toggle state
     mLed.Write(localSettings->toggleState);
+    // set mode LEDs based on current mode (0=LP, 1=BP, 2=HP)
+    mLedLP.Write(localSettings->mode == 0);
+    mLedBP.Write(localSettings->mode == 1);
+    mLedHP.Write(localSettings->mode == 2);
+
+    // mLedLP.Write(true);
+    // mLedBP.Write(true);
+    // mLedHP.Write(true);
   }
 
   // Get stored settings and write to local
@@ -135,7 +156,7 @@ class JuTron : public Jaffx::Firmware {
     mInterfaceManager.processInput();
     updateCtrls();
     mInterfaceManager.processOutput();
-    System::Delay(5);
+    System::Delay(1);
   }
   
 };
