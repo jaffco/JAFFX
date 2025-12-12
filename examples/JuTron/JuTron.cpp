@@ -68,7 +68,7 @@ struct InterfaceManager {
     mLedLP.Init(seed::D25, GPIO::Mode::OUTPUT);  // LP mode LED
     mLedBP.Init(seed::D26, GPIO::Mode::OUTPUT);  // BP mode LED
     mLedHP.Init(seed::D27, GPIO::Mode::OUTPUT);  // HP mode LED
-    mFootswitch.Init(seed::A1, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
+    mFootswitch.Init(seed::A1, 0.f, Switch::Type::TYPE_TOGGLE, Switch::Polarity::POLARITY_NORMAL);
     mVolKnob.Init(hw.adc.GetPtr(0), hw.AudioSampleRate());   // Vol knob on ADC channel 0
     mDriveKnob.Init(hw.adc.GetPtr(1), hw.AudioSampleRate()); // Drive knob on ADC channel 1
     mJKnob.Init(hw.adc.GetPtr(2), hw.AudioSampleRate());     // J knob on ADC channel 2
@@ -82,8 +82,8 @@ struct InterfaceManager {
     mFootswitch.Debounce();
     mModeEncoder.Debounce();
 
-    if (mFootswitch.TimeHeldMs() > 5000) { // 5 second hold to reset to bootloader
-      System::ResetToBootloader(daisy::System::DAISY_INFINITE_TIMEOUT);
+    if (mFootswitch.Pressed () && mFootswitch.TimeHeldMs () > 5000) { // 5 second hold in on position to reset to bootloader
+      System:: ResetToBootloader (daisy:: System:: DAISY_INFINITE_TIMEOUT) ;
     }
 
     if (mFootswitch.FallingEdge()) { // invert toggle state
