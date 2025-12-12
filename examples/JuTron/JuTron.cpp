@@ -101,8 +101,16 @@ struct InterfaceManager {
       }
     }
 
-    localSettings->vol = mVolKnob.Process();
-    localSettings->drive = mDriveKnob.Process();
+    float vol = mVolKnob.Process();
+    vol = giml::scale(vol, 0.f, 1.f, -12.f, 12.f);
+    vol = giml::dBtoA(vol);
+    localSettings->vol = vol;
+
+    float drive = mDriveKnob.Process();
+    drive = giml::scale(drive, 0.f, 1.f, 0.f, 30.f);
+    drive = giml::dBtoA(drive);
+    localSettings->drive = drive;
+
     localSettings->J = mJKnob.Process();
 
     // saveSettings();
@@ -149,6 +157,11 @@ class JuTron : public Jaffx::Firmware {
   }
 
   float processAudio(float in) override {
+    
+    if (!mSettings.toggleState) {
+      return in; // bypass if toggle is off
+    }
+
     return mEnvelopeFilter.processSample(mSettings.drive * in) * mSettings.vol;
   }
 
