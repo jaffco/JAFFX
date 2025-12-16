@@ -24,8 +24,8 @@ float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE / 2];
 #include "diskio.h"
 
 // SD write chunk in float samples (interleaved). Keep bytes aligned to SD blocks.
-// 4096 floats * 4 bytes = 16384 bytes.
-static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 4096;
+// 2048 floats * 4 bytes = 8192 bytes.
+static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 2048;
 
 // Ring buffer size in floats (200k floats = 800KB in SDRAM)
 static constexpr size_t RING_BUFFER_SIZE = 200000;
@@ -139,6 +139,7 @@ private:
   // buffer handling
   CircularFifo<float> mAudioFifo;
   volatile bool bufferOverflowed = false;
+  volatile bool recordingStopped = false;
 
 
   volatile bool sdCardInserted = false;
@@ -166,9 +167,15 @@ public:
   volatile bool sdSyncNeeded = false;
 
   void SetSDInserted(bool inserted) {
+    Jaffx::Firmware::instance->hardware.PrintLine("SetSDInserted called with %d", inserted);
     sdCardInserted = inserted;
     if (!inserted) {
-      isRecording = false; // Stop recording logic immediately
+      if (isRecording) {
+        Jaffx::Firmware::instance->hardware.PrintLine("SD card removed during recording. Stopping.");
+        StopRecording();
+      }
+    } else {
+      Jaffx::Firmware::instance->hardware.PrintLine("SD card inserted.");
     }
   }
 
@@ -275,6 +282,7 @@ public:
 
     mAudioFifo.Reset();
     bufferOverflowed = false;
+    recordingStopped = false;
     recordedSamples = 0;
     isRecording = true;
     lastSyncTime = System::GetNow();
@@ -284,9 +292,11 @@ public:
   }
 
   void StopRecording() {
+    Jaffx::Firmware::instance->hardware.PrintLine("StopRecording called");
     if (!isRecording)
       return;
     isRecording = false;
+    recordingStopped = true;
     ProcessBackgroundWrite(); // Flush remaining
     UpdateWavHeader();
     f_close(&wav_file);
@@ -337,10 +347,18 @@ public:
     if (written != interleavedCount) {
       // Never stop/close files from the audio callback.
       bufferOverflowed = true;
+      Jaffx::Firmware::instance->hardware.PrintLine("Buffer overflow detected in WriteAudioBlock");
     }
   }
 
   void ProcessBackgroundWrite() {
+
+    // If recording was stopped externally, finalize it
+    if (!isRecording && !recordingStopped && recordedSamples > 0) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Recording stopped externally, finalizing");
+      StopRecording();
+      return;
+    }
 
     // Critical check to avoid hanging if card removed
     if (!sdCardInserted && isRecording) {
@@ -352,6 +370,7 @@ public:
       return;
 
     if (bufferOverflowed) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Buffer overflow detected in ProcessBackgroundWrite");
       Jaffx::Firmware::instance->hardware.PrintLine("ERROR: Audio FIFO overflow (dropping samples). Stopping recording.");
       StopRecording();
       return;
