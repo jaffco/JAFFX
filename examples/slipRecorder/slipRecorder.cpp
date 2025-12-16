@@ -1,6 +1,5 @@
 #include "../../Gimmel/include/utility.hpp"
 #include "../../Jaffx.hpp"
-// #include "StateMachine.hpp"
 #include "stm32h750xx.h"
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_pwr_ex.h"
@@ -26,98 +25,12 @@ float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE / 2];
 
 #include <new>
 
+#define RING_BUFFER_SIZE 1000000
+
 // -- RING BUFFER --
 enum class SlipRecorderState { RECORDING, DEEPSLEEP };
 
 volatile SlipRecorderState currentState = SlipRecorderState::DEEPSLEEP;
-
-// Single-Producer, Single-Consumer, lock-free ring buffer
-template <typename T, size_t Size> class AtomicRingBuffer {
-public:
-  AtomicRingBuffer() : head_(0), tail_(0) {}
-
-  // Push a block of data (Producer - Audio Callback)
-  // Returns number of elements actually written
-  size_t Write(const T *data, size_t count) {
-    size_t current_head = head_.load(std::memory_order_relaxed);
-    size_t current_tail = tail_.load(std::memory_order_acquire);
-
-    size_t available = Size - (current_head - current_tail);
-    // wrap-around check not needed for size logic if using strict unsigned
-    // arithmetic on indices? Actually, with standard implementation using full
-    // size_t range overflow, Size must be power of 2 for bitwise masking, or we
-    // use mod. Here I used simple increasing head/tail. Capacity is Size.
-    if (count > available)
-      count = available;
-
-    size_t write_idx = current_head % Size;
-    size_t first_chunk = Size - write_idx;
-
-    if (count <= first_chunk) {
-      std::memcpy(&buffer_[write_idx], data, count * sizeof(T));
-    } else {
-      std::memcpy(&buffer_[write_idx], data, first_chunk * sizeof(T));
-      std::memcpy(&buffer_[0], data + first_chunk,
-                  (count - first_chunk) * sizeof(T));
-    }
-
-    // Commit the write
-    head_.store(current_head + count, std::memory_order_release);
-    return count;
-  }
-
-  // Pop a block of data (Consumer - Main Loop)
-  // Returns number of elements actually read
-  size_t Read(T *data, size_t count) {
-    size_t current_tail = tail_.load(std::memory_order_relaxed);
-    size_t current_head = head_.load(std::memory_order_acquire);
-
-    size_t available = current_head - current_tail;
-    if (count > available)
-      count = available;
-
-    size_t read_idx = current_tail % Size;
-    size_t first_chunk = Size - read_idx;
-
-    if (count <= first_chunk) {
-      std::memcpy(data, &buffer_[read_idx], count * sizeof(T));
-    } else {
-      std::memcpy(data, &buffer_[read_idx], first_chunk * sizeof(T));
-      std::memcpy(data + first_chunk, &buffer_[0],
-                  (count - first_chunk) * sizeof(T));
-    }
-
-    // Commit the read
-    tail_.store(current_tail + count, std::memory_order_release);
-    return count;
-  }
-
-  size_t Available() const {
-    return head_.load(std::memory_order_acquire) -
-           tail_.load(std::memory_order_relaxed);
-  }
-
-  void Reset() {
-    head_.store(0, std::memory_order_relaxed);
-    tail_.store(0, std::memory_order_relaxed);
-  }
-
-private:
-  T buffer_[Size];
-  std::atomic<size_t> head_;
-  std::atomic<size_t> tail_;
-};
-
-// -- CONSTANTS --
-// 48kHz * 2 channels * 4 bytes = 384kB/s.
-// 262144 floats ~= 1MB ~= 2.7 seconds of audio in SDRAM.
-static constexpr size_t RING_BUFFER_SIZE = 262144;
-static constexpr size_t SD_WRITE_CHUNK_SIZE_BYTES = 16384;
-static constexpr size_t SD_WRITE_CHUNK_SAMPLES =
-    SD_WRITE_CHUNK_SIZE_BYTES / sizeof(float);
-
-// Place RingBuffer in SDRAM
-AtomicRingBuffer<float, RING_BUFFER_SIZE> *audioRingBuffer = nullptr;
 
 class SDCardWavWriter {
 private:
@@ -125,12 +38,15 @@ private:
   FatFSInterface &fsi_handler = global_fsi_handler;
   FIL &wav_file = global_wav_file;
 
+  // buffer handling
+  giml::CircularBuffer<float> mCircularBuffer;
+  unsigned int samplesToTransfer = 0;
+
+
   volatile bool sdCardInserted = false;
   bool isRecording = false;
   unsigned int recordedSamples = 0;
-  uint32_t lastSyncTime = 0;
-
-  float tempWriteBuffer[SD_WRITE_CHUNK_SAMPLES];
+  unsigned int lastSyncTime = 0;
 
   struct WavHeader {
     char riff[4];
@@ -170,24 +86,13 @@ public:
   }
 
   bool InitSDCard() {
-    Jaffx::Firmware::instance->hardware.PrintLine(
-        "Initializing Ring Buffer...");
-    if (audioRingBuffer == nullptr) {
-      // Allocate only once
-      void *ptr = Jaffx::mSDRAM.calloc(
-          1, sizeof(AtomicRingBuffer<float, RING_BUFFER_SIZE>));
-      if (ptr) {
-        audioRingBuffer = new (ptr) AtomicRingBuffer<float, RING_BUFFER_SIZE>();
-        Jaffx::Firmware::instance->hardware.PrintLine("Ring Buffer Allocated.");
-      } else {
-        Jaffx::Firmware::instance->hardware.PrintLine(
-            "SDRAM Allocation FAiled!");
-        return false;
-      }
-    } else {
-      audioRingBuffer->Reset();
-    }
 
+    // Init ring buffer
+    Jaffx::Firmware::instance->hardware.PrintLine("Initializing Ring Buffer..."); 
+    mCircularBuffer.allocate(RING_BUFFER_SIZE);
+    Jaffx::Firmware::instance->hardware.PrintLine("Audio Ring Buffer Initialized!");
+
+    // Init SD card
     Jaffx::Firmware::instance->hardware.PrintLine("Initializing SD Card...");
 
     SdmmcHandler::Config sd_cfg;
@@ -265,7 +170,7 @@ public:
     f_write(&wav_file, &header, sizeof(header), &bw);
     f_sync(&wav_file);
 
-    audioRingBuffer->Reset();
+    mCircularBuffer.allocate(RING_BUFFER_SIZE);
     recordedSamples = 0;
     isRecording = true;
     lastSyncTime = System::GetNow();
@@ -316,48 +221,55 @@ public:
     if (size > 256)
       return; // Safety
 
-    float interleaved[size * 2];
+    // interleaved writing
     for (size_t i = 0; i < size; ++i) {
-      interleaved[i * 2] = left[i];
-      interleaved[i * 2 + 1] = right[i];
+      mCircularBuffer.writeSample(left[i]);
+      mCircularBuffer.writeSample(right[i]);
+      samplesToTransfer += 2;
+
+      if (samplesToTransfer >= RING_BUFFER_SIZE) {
+        Jaffx::Firmware::instance->hardware.PrintLine("Ring Buffer Overflow!");
+        this->StopRecording();
+        return;
+      }
     }
-    if (audioRingBuffer)
-      audioRingBuffer->Write(interleaved, size * 2);
+
+
   }
 
   void ProcessBackgroundWrite() {
+
     // Critical check to avoid hanging if card removed
     if (!sdCardInserted && isRecording) {
       isRecording = false;
       return;
     }
-    if (!isRecording)
+
+    if (!isRecording) {
       return;
-    if (!audioRingBuffer)
+    }
+
+    float tempWriteBuffer[SD_WRITE_CHUNK_SAMPLES];
+    // Read from ring buffer
+    unsigned int samplesRead = 0;
+    for (unsigned int i = 0; i < SD_WRITE_CHUNK_SAMPLES; ++i) {
+      tempWriteBuffer[i] = mCircularBuffer.readSample(size_t(samplesToTransfer)); // force int reading
+      samplesRead++;
+      samplesToTransfer--;
+    } 
+
+    UINT bw;
+    FRESULT res = f_write(&wav_file, tempWriteBuffer, samplesRead * sizeof(float), &bw);
+    if (res != FR_OK) {
+      isRecording = false;
+      f_close(&wav_file);
       return;
+    }
+    recordedSamples += samplesRead;
 
-    size_t available = audioRingBuffer->Available();
-    while (available >= SD_WRITE_CHUNK_SAMPLES) {
-      size_t samplesRead =
-          audioRingBuffer->Read(tempWriteBuffer, SD_WRITE_CHUNK_SAMPLES);
-
-      UINT bw;
-      FRESULT res =
-          f_write(&wav_file, tempWriteBuffer, samplesRead * sizeof(float), &bw);
-
-      if (res != FR_OK) {
-        isRecording = false;
-        f_close(&wav_file);
-        return;
-      }
-      recordedSamples += samplesRead;
-
-      if (System::GetNow() - lastSyncTime > 5000) {
-        UpdateWavHeader();
-        lastSyncTime = System::GetNow();
-      }
-      // Update available after read to loop or exit
-      available = audioRingBuffer->Available();
+    if (System::GetNow() - lastSyncTime > 5000) {
+      UpdateWavHeader();
+      lastSyncTime = System::GetNow();
     }
   }
 
