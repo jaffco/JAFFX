@@ -47,15 +47,19 @@ public:
   }
 
   size_t Available() const {
-    return head_.load(std::memory_order_acquire) -
-           tail_.load(std::memory_order_relaxed);
+    size_t head = head_.load(std::memory_order_acquire);
+    size_t tail = tail_.load(std::memory_order_relaxed);
+    if (head >= tail) {
+      return head - tail;
+    } else {
+      return head + (this->size() - tail);
+    }
   }
 
   size_t Free() const {
-    const size_t available = Available();
-    if (available >= this->bufferSize)
-      return 0;
-    return this->bufferSize - available;
+    size_t available = Available();
+    if (available >= this->size() - 1) return 0;
+    return this->size() - 1 - available;
   }
 
   // Producer: push block. Returns elements written.
@@ -66,7 +70,8 @@ public:
     const size_t current_head = head_.load(std::memory_order_relaxed);
     const size_t current_tail = tail_.load(std::memory_order_acquire);
 
-    size_t free_space = this->size() - (current_head - current_tail);
+    const size_t available = (current_head >= current_tail) ? (current_head - current_tail) : (current_head + (this->size() - current_tail));
+    const size_t free_space = (available >= this->size() - 1) ? 0 : this->size() - 1 - available;
     if (count > free_space)
       count = free_space;
     if (count == 0)
@@ -95,7 +100,7 @@ public:
     const size_t current_tail = tail_.load(std::memory_order_relaxed);
     const size_t current_head = head_.load(std::memory_order_acquire);
 
-    size_t available = current_head - current_tail;
+    const size_t available = (current_head >= current_tail) ? (current_head - current_tail) : (current_head + (this->size() - current_tail));
     if (count > available)
       count = available;
     if (count == 0)

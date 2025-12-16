@@ -6,7 +6,7 @@ from scipy.signal import spectrogram
 import os
 
 # Load the WAV file
-wav_file = 'rec_00024.wav'
+wav_file = 'rec_00026.wav'
 rate, data = wav.read(wav_file)
 
 print(f"Sample rate: {rate} Hz")
@@ -166,7 +166,7 @@ print(f"Spikes near SD write boundaries: {near_sd}")
 
 # Generate markdown report
 with open('audio_analysis_report.md', 'w') as f:
-    f.write('# Audio Analysis Report: rec_00024.wav\n\n')
+    f.write('# Audio Analysis Report: rec_00026.wav\n\n')
     f.write(f'## File Information\n')
     f.write(f'- Sample Rate: {rate} Hz\n')
     f.write(f'- Channels: {"Stereo" if data.ndim == 2 else "Mono"}\n')
