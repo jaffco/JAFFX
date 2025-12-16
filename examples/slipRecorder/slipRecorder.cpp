@@ -23,9 +23,102 @@ float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE / 2];
 
 #include "diskio.h"
 
-#include <new>
+// SD write chunk in float samples (interleaved). Keep bytes aligned to SD blocks.
+// 4096 floats * 4 bytes = 16384 bytes.
+static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 4096;
 
-#define RING_BUFFER_SIZE 1000000
+// Ring buffer size in floats (200k floats = 800KB in SDRAM)
+static constexpr size_t RING_BUFFER_SIZE = 200000;
+
+// Single-producer (audio callback), single-consumer (main loop) FIFO that uses
+// giml::CircularBuffer as the backing storage.
+template <typename T> class CircularFifo : public giml::CircularBuffer<T> {
+public:
+  void allocate(size_t size) {
+    giml::CircularBuffer<T>::allocate(size);
+    head_.store(0, std::memory_order_relaxed);
+    tail_.store(0, std::memory_order_relaxed);
+  }
+
+  void Reset() {
+    head_.store(0, std::memory_order_relaxed);
+    tail_.store(0, std::memory_order_relaxed);
+    this->setWriteIndex(0);
+  }
+
+  size_t Available() const {
+    return head_.load(std::memory_order_acquire) -
+           tail_.load(std::memory_order_relaxed);
+  }
+
+  size_t Free() const {
+    const size_t available = Available();
+    if (available >= this->bufferSize)
+      return 0;
+    return this->bufferSize - available;
+  }
+
+  // Producer: push block. Returns elements written.
+  size_t Push(const T *data, size_t count) {
+    if (!this->getBuffer() || this->size() == 0 || count == 0)
+      return 0;
+
+    const size_t current_head = head_.load(std::memory_order_relaxed);
+    const size_t current_tail = tail_.load(std::memory_order_acquire);
+
+    size_t free_space = this->size() - (current_head - current_tail);
+    if (count > free_space)
+      count = free_space;
+    if (count == 0)
+      return 0;
+
+    size_t write_idx = current_head % this->size();
+    size_t first_chunk = this->size() - write_idx;
+    if (count <= first_chunk) {
+      std::memcpy(&this->getBuffer()[write_idx], data, count * sizeof(T));
+    } else {
+      std::memcpy(&this->getBuffer()[write_idx], data,
+                  first_chunk * sizeof(T));
+      std::memcpy(&this->getBuffer()[0], data + first_chunk,
+                  (count - first_chunk) * sizeof(T));
+    }
+
+    head_.store(current_head + count, std::memory_order_release);
+    return count;
+  }
+
+  // Consumer: pop block. Returns elements read.
+  size_t Pop(T *out, size_t count) {
+    if (!this->getBuffer() || this->size() == 0 || count == 0)
+      return 0;
+
+    const size_t current_tail = tail_.load(std::memory_order_relaxed);
+    const size_t current_head = head_.load(std::memory_order_acquire);
+
+    size_t available = current_head - current_tail;
+    if (count > available)
+      count = available;
+    if (count == 0)
+      return 0;
+
+    size_t read_idx = current_tail % this->size();
+    size_t first_chunk = this->size() - read_idx;
+    if (count <= first_chunk) {
+      std::memcpy(out, &this->getBuffer()[read_idx], count * sizeof(T));
+    } else {
+      std::memcpy(out, &this->getBuffer()[read_idx], first_chunk * sizeof(T));
+      std::memcpy(out + first_chunk, &this->getBuffer()[0],
+                  (count - first_chunk) * sizeof(T));
+    }
+
+    tail_.store(current_tail + count, std::memory_order_release);
+    return count;
+  }
+
+private:
+  std::atomic<size_t> head_{0};
+  std::atomic<size_t> tail_{0};
+};
 
 // -- RING BUFFER --
 enum class SlipRecorderState { RECORDING, DEEPSLEEP };
@@ -39,8 +132,8 @@ private:
   FIL &wav_file = global_wav_file;
 
   // buffer handling
-  giml::CircularBuffer<float> mCircularBuffer;
-  unsigned int samplesToTransfer = 0;
+  CircularFifo<float> mAudioFifo;
+  volatile bool bufferOverflowed = false;
 
 
   volatile bool sdCardInserted = false;
@@ -89,7 +182,12 @@ public:
 
     // Init ring buffer
     Jaffx::Firmware::instance->hardware.PrintLine("Initializing Ring Buffer..."); 
-    mCircularBuffer.allocate(RING_BUFFER_SIZE);
+    float* ringBuffer = static_cast<float*>(Jaffx::mSDRAM.calloc(RING_BUFFER_SIZE, sizeof(float)));
+    if (!ringBuffer) {
+      Jaffx::Firmware::instance->hardware.PrintLine("SDRAM allocation failed!");
+      return false;
+    }
+    mAudioFifo.setBuffer(ringBuffer, RING_BUFFER_SIZE);
     Jaffx::Firmware::instance->hardware.PrintLine("Audio Ring Buffer Initialized!");
 
     // Init SD card
@@ -170,7 +268,8 @@ public:
     f_write(&wav_file, &header, sizeof(header), &bw);
     f_sync(&wav_file);
 
-    mCircularBuffer.allocate(RING_BUFFER_SIZE);
+    mAudioFifo.Reset();
+    bufferOverflowed = false;
     recordedSamples = 0;
     isRecording = true;
     lastSyncTime = System::GetNow();
@@ -221,20 +320,19 @@ public:
     if (size > 256)
       return; // Safety
 
-    // interleaved writing
+    // Interleave into a small stack buffer and push as a block.
+    float interleaved[512];
+    const size_t interleavedCount = size * 2;
     for (size_t i = 0; i < size; ++i) {
-      mCircularBuffer.writeSample(left[i]);
-      mCircularBuffer.writeSample(right[i]);
-      samplesToTransfer += 2;
-
-      if (samplesToTransfer >= RING_BUFFER_SIZE) {
-        Jaffx::Firmware::instance->hardware.PrintLine("Ring Buffer Overflow!");
-        this->StopRecording();
-        return;
-      }
+      interleaved[i * 2] = left[i];
+      interleaved[i * 2 + 1] = right[i];
     }
 
-
+    const size_t written = mAudioFifo.Push(interleaved, interleavedCount);
+    if (written != interleavedCount) {
+      // Never stop/close files from the audio callback.
+      bufferOverflowed = true;
+    }
   }
 
   void ProcessBackgroundWrite() {
@@ -245,31 +343,38 @@ public:
       return;
     }
 
-    if (!isRecording) {
+    if (!isRecording)
+      return;
+
+    if (bufferOverflowed) {
+      Jaffx::Firmware::instance->hardware.PrintLine("ERROR: Audio FIFO overflow (dropping samples). Stopping recording.");
+      StopRecording();
       return;
     }
 
     float tempWriteBuffer[SD_WRITE_CHUNK_SAMPLES];
-    // Read from ring buffer
-    unsigned int samplesRead = 0;
-    for (unsigned int i = 0; i < SD_WRITE_CHUNK_SAMPLES; ++i) {
-      tempWriteBuffer[i] = mCircularBuffer.readSample(size_t(samplesToTransfer)); // force int reading
-      samplesRead++;
-      samplesToTransfer--;
-    } 
 
-    UINT bw;
-    FRESULT res = f_write(&wav_file, tempWriteBuffer, samplesRead * sizeof(float), &bw);
-    if (res != FR_OK) {
-      isRecording = false;
-      f_close(&wav_file);
-      return;
-    }
-    recordedSamples += samplesRead;
+    // Write as many full chunks as are available.
+    while (mAudioFifo.Available() >= SD_WRITE_CHUNK_SAMPLES) {
+      const size_t samplesRead = mAudioFifo.Pop(tempWriteBuffer, SD_WRITE_CHUNK_SAMPLES);
+      if (samplesRead == 0)
+        break;
 
-    if (System::GetNow() - lastSyncTime > 5000) {
-      UpdateWavHeader();
-      lastSyncTime = System::GetNow();
+      UINT bw;
+      FRESULT res = f_write(&wav_file, tempWriteBuffer,
+                            samplesRead * sizeof(float), &bw);
+      if (res != FR_OK || bw != samplesRead * sizeof(float)) {
+        isRecording = false;
+        f_close(&wav_file);
+        return;
+      }
+
+      recordedSamples += samplesRead;
+
+      if (System::GetNow() - lastSyncTime > 5000) {
+        UpdateWavHeader();
+        lastSyncTime = System::GetNow();
+      }
     }
   }
 
