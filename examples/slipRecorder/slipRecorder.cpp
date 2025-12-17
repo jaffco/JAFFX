@@ -175,8 +175,14 @@ public:
   bool FRESULT_Error_Print(FRESULT res) {
     if (res == FR_OK)
       return true;
-    Jaffx::Firmware::instance->hardware.Print("SD Error: ");
-    Jaffx::Firmware::instance->hardware.PrintLine("%d", res);
+    Jaffx::Firmware::instance->hardware.PrintLine("=== FATFS ERROR DEBUG ===");
+    Jaffx::Firmware::instance->hardware.PrintLine("FRESULT: %d", res);
+    extern SD_HandleTypeDef hsd1;
+    HAL_SD_StateTypeDef sd_state = HAL_SD_GetState(&hsd1);
+    uint32_t hal_error = HAL_SD_GetError(&hsd1);
+    Jaffx::Firmware::instance->hardware.PrintLine("SDMMC State: %d", sd_state);
+    Jaffx::Firmware::instance->hardware.PrintLine("HAL SD Error Code: 0x%08X", hal_error);
+    Jaffx::Firmware::instance->hardware.PrintLine("=== END FATFS ERROR DEBUG ===");
     return false;
   }
 
@@ -202,6 +208,15 @@ public:
     sd_cfg.clock_powersave = false;
 
     if (sdmmc_handler.Init(sd_cfg) != SdmmcHandler::Result::OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("=== SDMMC INIT ERROR DEBUG ===");
+      extern SD_HandleTypeDef hsd1;
+      HAL_SD_StateTypeDef sd_state = HAL_SD_GetState(&hsd1);
+      uint32_t hal_error = HAL_SD_GetError(&hsd1);
+      Jaffx::Firmware::instance->hardware.PrintLine("SDMMC State: %d", sd_state);
+      Jaffx::Firmware::instance->hardware.PrintLine("HAL SD Error Code: 0x%08X", hal_error);
+      Jaffx::Firmware::instance->hardware.PrintLine("SD Config: Speed=%d, Width=%d, PowerSave=%d", 
+                                                   (int)sd_cfg.speed, (int)sd_cfg.width, sd_cfg.clock_powersave);
+      Jaffx::Firmware::instance->hardware.PrintLine("=== END SDMMC INIT ERROR DEBUG ===");
       Jaffx::Firmware::instance->hardware.PrintLine("SDMMC Init Failed");
       return false;
     }
@@ -211,8 +226,15 @@ public:
     fsi_cfg.media = FatFSInterface::Config::MEDIA_SD;
 
     if (fsi_handler.Init(fsi_cfg) != FatFSInterface::Result::OK) {
-      Jaffx::Firmware::instance->hardware.PrintLine(
-          "FatFS Handler Init Failed");
+      Jaffx::Firmware::instance->hardware.PrintLine("=== FATFS INIT ERROR DEBUG ===");
+      extern SD_HandleTypeDef hsd1;
+      HAL_SD_StateTypeDef sd_state = HAL_SD_GetState(&hsd1);
+      uint32_t hal_error = HAL_SD_GetError(&hsd1);
+      Jaffx::Firmware::instance->hardware.PrintLine("SDMMC State: %d", sd_state);
+      Jaffx::Firmware::instance->hardware.PrintLine("HAL SD Error Code: 0x%08X", hal_error);
+      Jaffx::Firmware::instance->hardware.PrintLine("FatFS Config: Media=%d", (int)fsi_cfg.media);
+      Jaffx::Firmware::instance->hardware.PrintLine("=== END FATFS INIT ERROR DEBUG ===");
+      Jaffx::Firmware::instance->hardware.PrintLine("FatFS Handler Init Failed");
       return false;
     }
 
@@ -227,6 +249,16 @@ public:
     }
 
     if (res != FR_OK) {
+      // Detailed mount error debugging
+      Jaffx::Firmware::instance->hardware.PrintLine("=== SD MOUNT ERROR DEBUG ===");
+      Jaffx::Firmware::instance->hardware.PrintLine("FRESULT: %d", res);
+      extern SD_HandleTypeDef hsd1;
+      HAL_SD_StateTypeDef sd_state = HAL_SD_GetState(&hsd1);
+      uint32_t hal_error = HAL_SD_GetError(&hsd1);
+      Jaffx::Firmware::instance->hardware.PrintLine("SDMMC State: %d", sd_state);
+      Jaffx::Firmware::instance->hardware.PrintLine("HAL SD Error Code: 0x%08X", hal_error);
+      Jaffx::Firmware::instance->hardware.PrintLine("SD Path: %s", fsi_handler.GetSDPath());
+      Jaffx::Firmware::instance->hardware.PrintLine("=== END SD MOUNT ERROR DEBUG ===");
       Jaffx::Firmware::instance->hardware.PrintLine("Mount Failed");
       return false;
     }
@@ -367,16 +399,43 @@ public:
       if (samplesRead == 0)
         break;
 
+      // Pre-write debugging: Only log on error, but prepare info
+      FSIZE_t pre_write_pos = f_tell(&wav_file);
+      extern SD_HandleTypeDef hsd1;
+      HAL_SD_StateTypeDef sd_state = HAL_SD_GetState(&hsd1);
+      uint32_t hal_error = HAL_SD_GetError(&hsd1);
+      uintptr_t buffer_addr = (uintptr_t)tempWriteBuffer;
+      bool buffer_aligned = (buffer_addr % 32) == 0;
+      uint32_t expected_bytes = samplesRead * sizeof(float);
+
       UINT bw;
+      uint32_t write_start_time = System::GetUs();
       FRESULT res = f_write(&wav_file, tempWriteBuffer,
                             samplesRead * sizeof(float), &bw);
-      if (res != FR_OK || bw != samplesRead * sizeof(float)) {
+      uint32_t write_end_time = System::GetUs();
+      uint32_t write_duration_us = write_end_time - write_start_time;
+
+      if (res != FR_OK || bw != expected_bytes) {
+        // Detailed error debugging
+        Jaffx::Firmware::instance->hardware.PrintLine("=== SD WRITE ERROR DEBUG ===");
+        Jaffx::Firmware::instance->hardware.PrintLine("FRESULT: %d (FR_DISK_ERR=%d)", res, FR_DISK_ERR);
+        Jaffx::Firmware::instance->hardware.PrintLine("Bytes Written: %u, Expected: %u", bw, expected_bytes);
+        Jaffx::Firmware::instance->hardware.PrintLine("Write Duration: %u us", write_duration_us);
+        Jaffx::Firmware::instance->hardware.PrintLine("File Position Before: %u", (unsigned int)pre_write_pos);
+        Jaffx::Firmware::instance->hardware.PrintLine("File Position After: %u", (unsigned int)f_tell(&wav_file));
+        Jaffx::Firmware::instance->hardware.PrintLine("SDMMC State: %d (READY=%d, BUSY=%d, ERROR=%d)", 
+                                                     sd_state, HAL_SD_STATE_READY, HAL_SD_STATE_BUSY, HAL_SD_STATE_ERROR);
+        Jaffx::Firmware::instance->hardware.PrintLine("HAL SD Error Code: 0x%08X", hal_error);
+        Jaffx::Firmware::instance->hardware.PrintLine("Buffer Address: 0x%08X, Aligned (32B): %s", 
+                                                     (unsigned int)buffer_addr, buffer_aligned ? "YES" : "NO");
+        Jaffx::Firmware::instance->hardware.PrintLine("Chunk Samples: %u, Chunk Bytes: %u", (unsigned int)samplesRead, expected_bytes);
+        Jaffx::Firmware::instance->hardware.PrintLine("FIFO Available Before Pop: %u", (unsigned int)mAudioFifo.Available() + samplesRead);
+        Jaffx::Firmware::instance->hardware.PrintLine("Recorded Samples So Far: %u", recordedSamples);
+        Jaffx::Firmware::instance->hardware.PrintLine("System Time: %u ms", System::GetNow());
+        Jaffx::Firmware::instance->hardware.PrintLine("=== END SD WRITE ERROR DEBUG ===");
+
         Jaffx::Firmware::instance->hardware.PrintLine("ProcessBackgroundWrite: SD Write Error! Stopping recording.");
-        Jaffx::Firmware::instance->hardware.PrintLine("FRESULT: %d", res);
-        Jaffx::Firmware::instance->hardware.PrintLine("Bytes Written: %u, Expected: %u", bw, samplesRead * sizeof(float));
         StopRecording();
-        // isRecording = false;
-        // f_close(&wav_file);
         return;
       }
 
@@ -397,14 +456,42 @@ public:
     unsigned int dataSize = recordedSamples * sizeof(float);
     unsigned int fileSize = dataSize + sizeof(WavHeader) - 8;
 
-    f_lseek(&wav_file, 4);
+    FRESULT res;
     UINT bw;
-    f_write(&wav_file, &fileSize, 4, &bw);
-    f_lseek(&wav_file, 40);
-    f_write(&wav_file, &dataSize, 4, &bw);
 
-    f_lseek(&wav_file, current_pos);
-    f_sync(&wav_file);
+    res = f_lseek(&wav_file, 4);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("UpdateWavHeader: f_lseek(4) failed, res=%d", res);
+      return;
+    }
+    res = f_write(&wav_file, &fileSize, 4, &bw);
+    if (res != FR_OK || bw != 4) {
+      Jaffx::Firmware::instance->hardware.PrintLine("UpdateWavHeader: f_write(fileSize) failed, res=%d, bw=%u", res, bw);
+      return;
+    }
+
+    res = f_lseek(&wav_file, 40);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("UpdateWavHeader: f_lseek(40) failed, res=%d", res);
+      return;
+    }
+    res = f_write(&wav_file, &dataSize, 4, &bw);
+    if (res != FR_OK || bw != 4) {
+      Jaffx::Firmware::instance->hardware.PrintLine("UpdateWavHeader: f_write(dataSize) failed, res=%d, bw=%u", res, bw);
+      return;
+    }
+
+    res = f_lseek(&wav_file, current_pos);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("UpdateWavHeader: f_lseek(back) failed, res=%d", res);
+      return;
+    }
+
+    res = f_sync(&wav_file);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("UpdateWavHeader: f_sync failed, res=%d", res);
+      return;
+    }
   }
 };
 
