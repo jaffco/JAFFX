@@ -506,48 +506,27 @@ public:
     mWavWriter.WriteAudioBlock(dmaAudioBuffer[0], dmaAudioBuffer[1], size);
   }
 
-  void on_PB12_rising() { hardware.PrintLine("Rising Edge Detected"); }
+  void on_PB12_rising() { 
+    hardware.PrintLine("SD Card: Rising Edge Detected"); 
+  }
 
   inline void on_PB12_fully_risen() {
     hardware.PrintLine("SD Card Fully Removed");
 
-    mWavWriter.SetSDInserted(false);
+    mWavWriter.StopRecording();
 
-    switch (currentState) {
-    case SlipRecorderState::RECORDING: {
-      mWavWriter.StopRecording();
-      currentState = SlipRecorderState::DEEPSLEEP;
-    } break;
-
-    case SlipRecorderState::DEEPSLEEP: {
-    } break;
-
-    default:
-      break;
-    }
+    hardware.PrintLine("Resetting to Bootloader...");
+    System::ResetToBootloader(daisy::System::DAISY);
   }
 
-  void on_PB12_falling() { hardware.PrintLine("Falling Edge Detected"); }
+  void on_PB12_falling() { 
+    hardware.PrintLine("SD Card: Falling Edge Detected"); 
+  }
 
   inline void on_PB12_fully_fallen() {
     hardware.PrintLine("SD Card Fully Inserted");
     hardware.PrintLine("Resetting to Bootloader...");
-
     System::ResetToBootloader(daisy::System::DAISY);
-    switch (currentState) {
-
-    case SlipRecorderState::RECORDING: {
-      hardware.PrintLine("Bro I'm already recording wtf");
-    } break;
-
-    case SlipRecorderState::DEEPSLEEP: {
-      mWavWriter.InitSDCard();
-      if (mWavWriter.sdStatus()) {
-        mWavWriter.StartRecording();
-      }
-      currentState = SlipRecorderState::RECORDING;
-    } break;
-    }
   }
 
   void updateClipDetectorLEDs() {
