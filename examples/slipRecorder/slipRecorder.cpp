@@ -366,8 +366,9 @@ public:
       return;
     }
 
-    if (!isRecording)
+    if (!isRecording) {
       return;
+    }
 
     if (bufferOverflowed) {
       Jaffx::Firmware::instance->hardware.PrintLine("Buffer overflow detected in ProcessBackgroundWrite");
@@ -403,8 +404,10 @@ public:
   }
 
   void UpdateWavHeader() {
-    if (!sdCardInserted)
+    
+    if (!sdCardInserted) {
       return;
+    }
 
     FSIZE_t current_pos = f_tell(&wav_file);
     unsigned int dataSize = recordedSamples * sizeof(float);
@@ -442,9 +445,7 @@ public:
   SDCardWavWriter mWavWriter;
 
   inline void deinit() {
-    for (auto &led : mLeds) {
-      led.DeInit();
-    }
+    for (auto &led : mLeds) { led.DeInit(); }
     mWavWriter.StopRecording();
     hardware.StopAudio();
     powerLED.Write(false); // Indicate power off
@@ -507,19 +508,26 @@ public:
   inline void CustomAudioBlockCallback(AudioHandle::InputBuffer in,
                                        AudioHandle::OutputBuffer out,
                                        size_t size) override {
-    if (!mWavWriter.recording())
+    // If not recording, return                                  
+    if (!mWavWriter.recording()) {
       return;
+    }
+
+    // copy audio data
     for (size_t i = 0; i < 2; i++) {
       const float *inChannel = in[i];
       float *dmaAudioBufferCorrespondingChannel = dmaAudioBuffer[i];
       memcpy(dmaAudioBufferCorrespondingChannel, inChannel,
              size * sizeof(float));
     }
+
     // Push to Ring Buffer
     mWavWriter.WriteAudioBlock(dmaAudioBuffer[0], dmaAudioBuffer[1], size);
   }
 
-  void on_PB12_rising() { hardware.PrintLine("Rising Edge Detected"); }
+  void on_PB12_rising() { 
+    hardware.PrintLine("Rising Edge Detected"); 
+  }
 
   inline void on_PB12_fully_risen() {
     hardware.PrintLine("SD Card Fully Removed");
@@ -527,20 +535,23 @@ public:
     mWavWriter.SetSDInserted(false);
 
     switch (currentState) {
-    case SlipRecorderState::RECORDING: {
-      mWavWriter.StopRecording();
-      currentState = SlipRecorderState::DEEPSLEEP;
-    } break;
+      case SlipRecorderState::RECORDING: {
+        mWavWriter.StopRecording();
+        currentState = SlipRecorderState::DEEPSLEEP;
+      } 
+      break;
 
-    case SlipRecorderState::DEEPSLEEP: {
-    } break;
+      case SlipRecorderState::DEEPSLEEP: {} 
+      break;
 
-    default:
+      default:
       break;
     }
   }
 
-  void on_PB12_falling() { hardware.PrintLine("Falling Edge Detected"); }
+  void on_PB12_falling() { 
+    hardware.PrintLine("Falling Edge Detected"); 
+  }
 
   inline void on_PB12_fully_fallen() {
     hardware.PrintLine("SD Card Fully Inserted");
@@ -552,42 +563,51 @@ public:
     System::ResetToBootloader(daisy::System::DAISY);
     switch (currentState) {
 
-    case SlipRecorderState::RECORDING: {
-      hardware.PrintLine("Bro I'm already recording wtf");
-    } break;
+      case SlipRecorderState::RECORDING: {
+        hardware.PrintLine("Bro I'm already recording wtf");
+      } break;
 
-    case SlipRecorderState::DEEPSLEEP: {
-      mWavWriter.InitSDCard();
-      if (mWavWriter.sdStatus()) {
-        mWavWriter.StartRecording();
-      }
-      currentState = SlipRecorderState::RECORDING;
-    } break;
+      case SlipRecorderState::DEEPSLEEP: {
+        mWavWriter.InitSDCard();
+        if (mWavWriter.sdStatus()) {
+          mWavWriter.StartRecording();
+        }
+        currentState = SlipRecorderState::RECORDING;
+      } 
+      break;
     }
   }
 
-  void on_PA2_rising() { hardware.PrintLine("USB Connected"); }
+  void on_PA2_rising() { 
+    hardware.PrintLine("USB Connected"); 
+  }
 
-  void on_PA2_fully_risen() { hardware.PrintLine("USB Fully Connected"); }
+  void on_PA2_fully_risen() { 
+    hardware.PrintLine("USB Fully Connected"); 
+  }
 
-  void on_PA2_falling() { hardware.PrintLine("USB Disconnected"); }
+  void on_PA2_falling() { 
+    hardware.PrintLine("USB Disconnected"); 
+  }
 
-  void on_PA2_fully_fallen() { hardware.PrintLine("USB Fully Disconnected"); }
+  void on_PA2_fully_fallen() { 
+    hardware.PrintLine("USB Fully Disconnected"); 
+  }
 
   inline void on_PC0_short_press() {
     hardware.PrintLine("Power Button Short-Pressed");
     switch (currentState) {
-    case SlipRecorderState::RECORDING: {
-      mWavWriter.StopRecording();
-      currentState = SlipRecorderState::DEEPSLEEP;
-    } break;
+      case SlipRecorderState::RECORDING: {
+        mWavWriter.StopRecording();
+        currentState = SlipRecorderState::DEEPSLEEP;
+      } break;
 
-    case SlipRecorderState::DEEPSLEEP: {
-      currentState = SlipRecorderState::RECORDING;
-    } break;
+      case SlipRecorderState::DEEPSLEEP: {
+        currentState = SlipRecorderState::RECORDING;
+      } break;
 
-    default: {
-    }
+      default: {
+      }
     }
   }
 
@@ -598,19 +618,24 @@ public:
       mLeds[0].Write(true);
       mLeds[1].Write(true);
       mLeds[2].Write(true);
-    } else if (dB >= -6.0f) {
+    } 
+    else if (dB >= -6.0f) {
       mLeds[0].Write(false);
       mLeds[1].Write(true);
       mLeds[2].Write(true);
-    } else if (dB >= -20.0f) {
+    } 
+    else if (dB >= -20.0f) {
       mLeds[0].Write(false);
       mLeds[1].Write(false);
       mLeds[2].Write(true);
-    } else {
+    } 
+    else {
       mLeds[0].Write(false);
       mLeds[1].Write(false);
       mLeds[2].Write(false);
     }
+
+    // Write recording status to Daisy Seed LED
     hardware.SetLed(mWavWriter.recording());
   }
 
@@ -619,34 +644,36 @@ public:
     mWavWriter.ProcessBackgroundWrite();
 
     switch (currentState) {
-    case SlipRecorderState::RECORDING: {
-      float myRMSLeft, myRMSRight;
-      arm_rms_f32(dmaAudioBuffer[0], buffersize, &myRMSLeft);
-      arm_rms_f32(dmaAudioBuffer[1], buffersize, &myRMSRight);
-      RmsReport = (myRMSLeft > myRMSRight) ? myRMSLeft : myRMSRight;
-      updateClipDetectorLEDs();
-    } break;
+      case SlipRecorderState::RECORDING: {
+        float myRMSLeft, myRMSRight;
+        arm_rms_f32(dmaAudioBuffer[0], buffersize, &myRMSLeft);
+        arm_rms_f32(dmaAudioBuffer[1], buffersize, &myRMSRight);
+        RmsReport = (myRMSLeft > myRMSRight) ? myRMSLeft : myRMSRight;
+        updateClipDetectorLEDs();
+      } 
+      break;
 
-    case SlipRecorderState::DEEPSLEEP: {
-    } break;
+      case SlipRecorderState::DEEPSLEEP: {} 
+      break;
 
-    default: {
-    }
+      default: 
+      break;
     }
   }
 };
 
 void wakeUp() {
   switch (currentState) {
-  case SlipRecorderState::RECORDING: {
-  } break;
+    case SlipRecorderState::RECORDING: {} 
+    break;
 
-  case SlipRecorderState::DEEPSLEEP: {
-    currentState = SlipRecorderState::RECORDING;
-  } break;
+    case SlipRecorderState::DEEPSLEEP: {
+      currentState = SlipRecorderState::RECORDING;
+    } 
+    break;
 
-  default: {
-  } break;
+    default: 
+    break;
   }
 }
 
