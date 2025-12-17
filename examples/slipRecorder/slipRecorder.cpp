@@ -544,23 +544,6 @@ public:
     }
   }
 
-  inline void on_PC0_short_press() {
-    hardware.PrintLine("Power Button Short-Pressed");
-    switch (currentState) {
-    case SlipRecorderState::RECORDING: {
-      mWavWriter.StopRecording();
-      currentState = SlipRecorderState::DEEPSLEEP;
-    } break;
-
-    case SlipRecorderState::DEEPSLEEP: {
-      currentState = SlipRecorderState::RECORDING;
-    } break;
-
-    default: {
-    }
-    }
-  }
-
   void updateClipDetectorLEDs() {
     float dB = 20.0f * log10f(RmsReport + 1e-12f);
 
@@ -653,34 +636,6 @@ inline void StartSDDebounceTimer() {
   TIM14->CR1 |= TIM_CR1_CEN; // Start the timer
 }
 
-volatile uint32_t powerButtonInitiallyPressedAtTimeUs = 0;
-volatile bool powerButtonPressedDown = false;
-// Power Button IRQ Handler
-extern "C" void EXTI0_IRQHandler(void) {
-  if (EXTI->PR1 & EXTI_PR1_PR0) {
-    /* Clear pending flag */
-    EXTI->PR1 |= EXTI_PR1_PR0;
-
-    /* Determine edge by reading input */
-    SlipRecorder &mInstance = SlipRecorder::Instance();
-    if (GPIOC->IDR & GPIO_IDR_ID0) { // Rising edge detected
-      powerButtonInitiallyPressedAtTimeUs = System::GetUs();
-      powerButtonPressedDown = true;
-    } else { // Falling edge detected
-      if (powerButtonPressedDown) {
-        powerButtonPressedDown = false;
-        uint32_t timeNow = System::GetUs();
-        uint32_t timeElapsedUs = timeNow - powerButtonInitiallyPressedAtTimeUs;
-        if (timeElapsedUs >= 4000000) {
-          System::ResetToBootloader(
-              System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
-        } else {
-          mInstance.on_PC0_short_press();
-        }
-      }
-    }
-  }
-}
 
 // Used to software debounce interrupts (using hardware timers)
 enum class InterruptState : unsigned char { // inherit from unsigned char to
