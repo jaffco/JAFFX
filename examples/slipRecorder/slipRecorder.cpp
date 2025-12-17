@@ -24,11 +24,24 @@ float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE / 2];
 #include "diskio.h"
 
 // SD write chunk in float samples (interleaved). Keep bytes aligned to SD blocks.
-// 2048 floats * 4 bytes = 8192 bytes.
-static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 2048;
+// 4096 floats * 4 bytes = 16384 bytes (aligned to SD page size for better throughput)
+static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 4096;
 
-// Ring buffer size in floats (200k floats = 800KB in SDRAM)
-static constexpr size_t RING_BUFFER_SIZE = 200000;
+// Ring buffer size in floats (1M floats = 4MB in SDRAM, ~10 seconds of audio)
+// Large buffer needed because f_sync() can block for several seconds
+static constexpr size_t RING_BUFFER_SIZE = 10000000;
+
+// Monitoring interval in milliseconds
+static constexpr uint32_t MONITOR_INTERVAL_MS = 2000;
+
+// Sync interval - with pre-allocated file, sync should be fast (no cluster allocation)
+static constexpr uint32_t SYNC_INTERVAL_MS = 10000; // 10 seconds - longer interval, but we have 104s buffer
+
+// Pre-allocation size in bytes (2GB max for FAT32 safety)
+static constexpr uint32_t PREALLOC_SIZE_BYTES = 2UL * 1024UL * 1024UL * 1024UL - 1024UL; // ~2GB minus small margin
+
+// Warning threshold: warn when buffer is more than 25% full
+static constexpr size_t BUFFER_WARNING_THRESHOLD = RING_BUFFER_SIZE / 4;
 
 // Single-producer (audio callback), single-consumer (main loop) FIFO that uses
 // giml::CircularBuffer as the backing storage.
@@ -120,6 +133,30 @@ public:
     return count;
   }
 
+  // Get fill percentage (0-100) for monitoring
+  uint8_t FillPercent() const {
+    size_t avail = Available();
+    if (this->size() == 0) return 0;
+    return (uint8_t)((avail * 100) / this->size());
+  }
+
+  // Normalize head/tail indices to prevent unbounded growth
+  // Call this from the consumer when buffer is nearly empty
+  // Returns true if normalization was performed
+  bool TryNormalize() {
+    size_t current_head = head_.load(std::memory_order_acquire);
+    size_t current_tail = tail_.load(std::memory_order_acquire);
+
+    // Only normalize when buffer is empty and indices are large
+    if (current_head == current_tail && current_head > this->size() * 2) {
+      // Reset both to 0 atomically (safe because buffer is empty)
+      tail_.store(0, std::memory_order_relaxed);
+      head_.store(0, std::memory_order_release);
+      return true;
+    }
+    return false;
+  }
+
 private:
   std::atomic<size_t> head_{0};
   std::atomic<size_t> tail_{0};
@@ -141,11 +178,20 @@ private:
   volatile bool bufferOverflowed = false;
   volatile bool recordingStopped = false;
 
-
   volatile bool sdCardInserted = false;
-  bool isRecording = false;
+  volatile bool isRecording = false;
   unsigned int recordedSamples = 0;
   unsigned int lastSyncTime = 0;
+
+  // Monitoring variables
+  uint32_t lastMonitorTime = 0;
+  uint32_t totalWriteCount = 0;
+  uint32_t slowWriteCount = 0;       // Writes taking > 15ms
+  uint32_t writeRetryCount = 0;      // Track write retries
+  uint32_t maxWriteTimeUs = 0;       // Track worst-case write time
+  uint32_t maxSyncTimeUs = 0;        // Track worst-case sync time
+  uint32_t syncErrorCount = 0;       // Track sync failures
+  uint8_t peakBufferFillPercent = 0; // Track peak buffer usage
 
   struct WavHeader {
     char riff[4];
@@ -278,7 +324,49 @@ public:
 
     UINT bw;
     f_write(&wav_file, &header, sizeof(header), &bw);
-    f_sync(&wav_file);
+
+    // PRE-ALLOCATE the file to avoid cluster allocation during recording
+    // This makes subsequent syncs MUCH faster (only metadata, no FAT updates)
+    Jaffx::Firmware::instance->hardware.PrintLine("Pre-allocating %lu MB (this may take a moment)...",
+        PREALLOC_SIZE_BYTES / (1024 * 1024));
+
+    uint32_t preallocStartMs = System::GetNow();
+
+    // Expand the file by seeking to end and writing a byte
+    res = f_lseek(&wav_file, PREALLOC_SIZE_BYTES);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Pre-alloc seek failed: %d", res);
+      f_close(&wav_file);
+      return false;
+    }
+
+    // Write a single byte to force cluster allocation
+    uint8_t dummy = 0;
+    res = f_write(&wav_file, &dummy, 1, &bw);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Pre-alloc write failed: %d", res);
+      f_close(&wav_file);
+      return false;
+    }
+
+    // Sync to commit all cluster allocations to FAT
+    res = f_sync(&wav_file);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Pre-alloc sync failed: %d", res);
+      f_close(&wav_file);
+      return false;
+    }
+
+    uint32_t preallocTimeMs = System::GetNow() - preallocStartMs;
+    Jaffx::Firmware::instance->hardware.PrintLine("Pre-allocation complete in %lu ms", preallocTimeMs);
+
+    // Seek back to just after the header to start writing audio data
+    res = f_lseek(&wav_file, sizeof(header));
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Seek to start failed: %d", res);
+      f_close(&wav_file);
+      return false;
+    }
 
     mAudioFifo.Reset();
     bufferOverflowed = false;
@@ -287,21 +375,51 @@ public:
     isRecording = true;
     lastSyncTime = System::GetNow();
 
+    // Reset monitoring variables
+    lastMonitorTime = System::GetNow();
+    totalWriteCount = 0;
+    slowWriteCount = 0;
+    writeRetryCount = 0;
+    maxWriteTimeUs = 0;
+    maxSyncTimeUs = 0;
+    syncErrorCount = 0;
+    peakBufferFillPercent = 0;
+
     Jaffx::Firmware::instance->hardware.PrintLine("Recording to: %s", filename);
+    Jaffx::Firmware::instance->hardware.PrintLine("Buffer: %lu floats (%lu KB, ~%lu sec), Chunk: %lu floats (%lu KB)",
+        RING_BUFFER_SIZE, (RING_BUFFER_SIZE * sizeof(float)) / 1024,
+        RING_BUFFER_SIZE / (48000 * 2),  // seconds of audio
+        SD_WRITE_CHUNK_SAMPLES, (SD_WRITE_CHUNK_SAMPLES * sizeof(float)) / 1024);
+    Jaffx::Firmware::instance->hardware.PrintLine("Sync interval: %lu sec (pre-allocated, should be fast)", SYNC_INTERVAL_MS / 1000);
     return true;
   }
 
   void StopRecording() {
     Jaffx::Firmware::instance->hardware.PrintLine("StopRecording called");
-    if (!isRecording)
-      return;
-    isRecording = false;
+
+    // CRITICAL: Always set recordingStopped to prevent re-entry loops
+    // Must be set BEFORE the isRecording check to avoid infinite loop
+    if (recordingStopped) {
+      return; // Already stopped, don't repeat
+    }
     recordingStopped = true;
+
+    if (!isRecording) {
+      // Was already stopped externally, just mark as stopped
+      return;
+    }
+
+    isRecording = false;
     ProcessBackgroundWrite(); // Flush remaining
     UpdateWavHeader();
     f_close(&wav_file);
-    Jaffx::Firmware::instance->hardware.PrintLine(
-        "Recording Stopped. Samples: %u", recordedSamples);
+
+    // Print final statistics
+    float recordingSeconds = (float)recordedSamples / (48000.0f * 2.0f);
+    Jaffx::Firmware::instance->hardware.PrintLine("Recording Stopped. Duration: " FLT_FMT3 "s, Samples: %u",
+        FLT_VAR3(recordingSeconds), recordedSamples);
+    Jaffx::Firmware::instance->hardware.PrintLine("Stats: Peak buf: %d%%, Writes: %lu, Retries: %lu, MaxWrite: %lu ms, MaxSync: %lu ms",
+        peakBufferFillPercent, totalWriteCount, writeRetryCount, maxWriteTimeUs / 1000, maxSyncTimeUs / 1000);
   }
 
   unsigned int GetNextRecordingNumber() {
@@ -345,9 +463,9 @@ public:
 
     const size_t written = mAudioFifo.Push(interleaved, interleavedCount);
     if (written != interleavedCount) {
-      // Never stop/close files from the audio callback.
+      // CRITICAL: Never call PrintLine or any blocking I/O from audio callback!
+      // Just set the flag - main loop will handle it
       bufferOverflowed = true;
-      Jaffx::Firmware::instance->hardware.PrintLine("Buffer overflow detected in WriteAudioBlock");
     }
   }
 
@@ -362,19 +480,47 @@ public:
 
     // Critical check to avoid hanging if card removed
     if (!sdCardInserted && isRecording) {
+      Jaffx::Firmware::instance->hardware.PrintLine("SD card removed while recording - stopping");
       isRecording = false;
+      recordingStopped = true; // CRITICAL: Must set this to prevent loop
       return;
     }
 
     if (!isRecording) {
+      // Try to normalize indices when not recording
+      mAudioFifo.TryNormalize();
       return;
     }
 
+    // FIRST: Track buffer fill level BEFORE draining (so we see actual fill)
+    uint8_t currentFill = mAudioFifo.FillPercent();
+    if (currentFill > peakBufferFillPercent) {
+      peakBufferFillPercent = currentFill;
+    }
+
+    // Check for buffer overflow (detected in audio callback)
     if (bufferOverflowed) {
-      Jaffx::Firmware::instance->hardware.PrintLine("Buffer overflow detected in ProcessBackgroundWrite");
-      Jaffx::Firmware::instance->hardware.PrintLine("ERROR: Audio FIFO overflow (dropping samples). Stopping recording.");
+      Jaffx::Firmware::instance->hardware.PrintLine("ERROR: Audio FIFO overflow!");
+      Jaffx::Firmware::instance->hardware.PrintLine("  Peak fill: %d%%, Slow writes: %lu/%lu, Max write: %lu us",
+          peakBufferFillPercent, slowWriteCount, totalWriteCount, maxWriteTimeUs);
       StopRecording();
       return;
+    }
+
+    // Warn if buffer is getting full (but don't stop)
+    uint32_t now = System::GetNow();
+    if (currentFill > 25 && (now - lastMonitorTime > MONITOR_INTERVAL_MS)) {
+      Jaffx::Firmware::instance->hardware.PrintLine("WARNING: Buffer %d%% full! Slow writes: %lu/%lu",
+          currentFill, slowWriteCount, totalWriteCount);
+    }
+
+    // Periodic monitoring output
+    if (now - lastMonitorTime > MONITOR_INTERVAL_MS) {
+      float recordingSeconds = (float)recordedSamples / (48000.0f * 2.0f);
+      Jaffx::Firmware::instance->hardware.PrintLine("[" FLT_FMT3 "s] Buf:%d%% Peak:%d%% Writes:%lu Retry:%lu MaxW:%lums MaxSync:%lums",
+          FLT_VAR3(recordingSeconds), currentFill, peakBufferFillPercent,
+          totalWriteCount, writeRetryCount, maxWriteTimeUs / 1000, maxSyncTimeUs / 1000);
+      lastMonitorTime = now;
     }
 
     float tempWriteBuffer[SD_WRITE_CHUNK_SAMPLES];
@@ -385,42 +531,170 @@ public:
       if (samplesRead == 0)
         break;
 
-      UINT bw;
-      FRESULT res = f_write(&wav_file, tempWriteBuffer,
-                            samplesRead * sizeof(float), &bw);
-      if (res != FR_OK || bw != samplesRead * sizeof(float)) {
+      // Time the SD write operation
+      uint32_t writeStartUs = System::GetUs();
+
+      UINT bw = 0;
+      FRESULT res = FR_OK;
+      const size_t expectedBytes = samplesRead * sizeof(float);
+      size_t totalWritten = 0;
+
+      // Retry logic for writes - up to 3 attempts
+      for (int attempt = 0; attempt < 3; attempt++) {
+        res = f_write(&wav_file, tempWriteBuffer + (totalWritten / sizeof(float)),
+                      expectedBytes - totalWritten, &bw);
+
+        totalWritten += bw;
+
+        if (res == FR_OK && totalWritten >= expectedBytes) {
+          break; // Success
+        }
+
+        if (attempt < 2) {
+          // Retry after small delay
+          System::DelayUs(1000); // 1ms delay before retry
+          if (totalWritten < expectedBytes) {
+            writeRetryCount++;
+          }
+        }
+      }
+
+      uint32_t writeTimeUs = System::GetUs() - writeStartUs;
+      totalWriteCount++;
+
+      // Track slow writes (>15ms is concerning)
+      if (writeTimeUs > 15000) {
+        slowWriteCount++;
+      }
+      if (writeTimeUs > maxWriteTimeUs) {
+        maxWriteTimeUs = writeTimeUs;
+      }
+
+      if (res != FR_OK || totalWritten != expectedBytes) {
+        Jaffx::Firmware::instance->hardware.PrintLine("SD write FAILED after retries: res=%d, wrote=%lu expected=%lu",
+            res, totalWritten, expectedBytes);
         isRecording = false;
+        recordingStopped = true;
         f_close(&wav_file);
         return;
       }
 
       recordedSamples += samplesRead;
 
-      if (System::GetNow() - lastSyncTime > 5000) {
-        UpdateWavHeader();
-        lastSyncTime = System::GetNow();
+      // Check for overflow after each write (in case sync took too long previously)
+      if (bufferOverflowed) {
+        return; // Will be handled at start of next call
       }
+    }
+
+    // Periodic sync - with pre-allocated file, this should be fast
+    // (only metadata updates, no cluster allocation)
+    if (sdSyncNeeded || (now - lastSyncTime > SYNC_INTERVAL_MS)) {
+
+      // Small delay before sync to let SD card finish any pending operations
+      System::Delay(5);
+
+      uint32_t syncStartUs = System::GetUs();
+
+      // Try sync with retries
+      FRESULT syncRes = FR_OK;
+      for (int syncAttempt = 0; syncAttempt < 3; syncAttempt++) {
+        syncRes = f_sync(&wav_file);
+        if (syncRes == FR_OK) {
+          break;
+        }
+        // Wait before retry
+        System::Delay(50);
+        Jaffx::Firmware::instance->hardware.PrintLine("Sync retry %d after error %d", syncAttempt + 1, syncRes);
+      }
+
+      uint32_t syncTimeUs = System::GetUs() - syncStartUs;
+
+      if (syncTimeUs > maxSyncTimeUs) {
+        maxSyncTimeUs = syncTimeUs;
+      }
+
+      // Log if sync took more than 500ms (should be much faster with pre-alloc)
+      if (syncTimeUs > 500000) {
+        Jaffx::Firmware::instance->hardware.PrintLine("WARNING: Sync took %lu ms (expected <100ms with pre-alloc)",
+            syncTimeUs / 1000);
+      }
+
+      if (syncRes != FR_OK) {
+        Jaffx::Firmware::instance->hardware.PrintLine("Sync FAILED after retries: %d at pos %lu, samples %u - STOPPING",
+            syncRes, (uint32_t)f_tell(&wav_file), recordedSamples);
+        syncErrorCount++;
+        StopRecording();
+        return;
+      } else {
+        lastSyncTime = now;
+        sdSyncNeeded = false;
+      }
+    }
+
+    // Try to normalize indices if buffer is empty (prevents index growth)
+    if (mAudioFifo.Available() == 0) {
+      mAudioFifo.TryNormalize();
     }
   }
 
   void UpdateWavHeader() {
-    
+
     if (!sdCardInserted) {
       return;
     }
 
-    FSIZE_t current_pos = f_tell(&wav_file);
     unsigned int dataSize = recordedSamples * sizeof(float);
     unsigned int fileSize = dataSize + sizeof(WavHeader) - 8;
 
-    f_lseek(&wav_file, 4);
-    UINT bw;
-    f_write(&wav_file, &fileSize, 4, &bw);
-    f_lseek(&wav_file, 40);
-    f_write(&wav_file, &dataSize, 4, &bw);
+    Jaffx::Firmware::instance->hardware.PrintLine("Updating header: dataSize=%u, fileSize=%u", dataSize, fileSize);
 
-    f_lseek(&wav_file, current_pos);
-    f_sync(&wav_file);
+    // Seek to file size field (offset 4) and write
+    FRESULT res = f_lseek(&wav_file, 4);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Header seek error: %d", res);
+      return;
+    }
+
+    UINT bw;
+    res = f_write(&wav_file, &fileSize, 4, &bw);
+    if (res != FR_OK || bw != 4) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Header write error (fileSize): %d, bw=%u", res, bw);
+    }
+
+    // Seek to data size field (offset 40) and write
+    res = f_lseek(&wav_file, 40);
+    if (res != FR_OK) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Header seek error (data): %d", res);
+      return;
+    }
+
+    res = f_write(&wav_file, &dataSize, 4, &bw);
+    if (res != FR_OK || bw != 4) {
+      Jaffx::Firmware::instance->hardware.PrintLine("Header write error (dataSize): %d, bw=%u", res, bw);
+    }
+
+    // Truncate file to actual size (removes wasted pre-allocated space)
+    FSIZE_t actualFileSize = sizeof(WavHeader) + dataSize;
+    res = f_lseek(&wav_file, actualFileSize);
+    if (res == FR_OK) {
+      res = f_truncate(&wav_file);
+      if (res != FR_OK) {
+        Jaffx::Firmware::instance->hardware.PrintLine("Truncate error: %d", res);
+      } else {
+        Jaffx::Firmware::instance->hardware.PrintLine("File truncated to %lu bytes", (uint32_t)actualFileSize);
+      }
+    }
+
+    // Only sync if we haven't had sync errors (avoid hanging)
+    if (syncErrorCount == 0) {
+      res = f_sync(&wav_file);
+      if (res != FR_OK) {
+        Jaffx::Firmware::instance->hardware.PrintLine("Final sync error: %d", res);
+      }
+    } else {
+      Jaffx::Firmware::instance->hardware.PrintLine("Skipping final sync due to previous sync errors");
+    }
   }
 };
 
@@ -487,6 +761,7 @@ public:
     // EnablePowerButtonDetect();
     EnableRecordingLED();
     EnableSDSyncTimer();
+    StartPeriodicSDSync();  // Actually start the timer (was missing!)
 
     // Start recording if SD card is OK
     if (mWavWriter.sdStatus()) {
@@ -839,7 +1114,7 @@ extern "C" void TIM17_IRQHandler(void) {
   if (TIM17->SR & TIM_SR_UIF) {
     TIM17->SR &= ~TIM_SR_UIF;
     if (SlipRecorder::Instance().mWavWriter.recording()) {
-      Jaffx::Firmware::instance->hardware.PrintLine("Triggering Sync now...");
+      // CRITICAL: Do NOT call PrintLine from ISR - just set the flag
       SlipRecorder::Instance().mWavWriter.sdSyncNeeded = true;
     }
   }
