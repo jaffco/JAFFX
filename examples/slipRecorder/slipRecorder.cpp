@@ -167,9 +167,6 @@ public:
 
   void SetSDInserted(bool inserted) {
     sdCardInserted = inserted;
-    if (!inserted) {
-      isRecording = false; // Stop recording logic immediately
-    }
   }
 
   bool sdStatus() const { return this->sdCardInserted; }
@@ -547,14 +544,6 @@ public:
     }
   }
 
-  void on_PA2_rising() { hardware.PrintLine("USB Connected"); }
-
-  void on_PA2_fully_risen() { hardware.PrintLine("USB Fully Connected"); }
-
-  void on_PA2_falling() { hardware.PrintLine("USB Disconnected"); }
-
-  void on_PA2_fully_fallen() { hardware.PrintLine("USB Fully Disconnected"); }
-
   inline void on_PC0_short_press() {
     hardware.PrintLine("Power Button Short-Pressed");
     switch (currentState) {
@@ -700,49 +689,6 @@ enum class InterruptState : unsigned char { // inherit from unsigned char to
   RISING = 1,
   NONE = 2
 };
-
-volatile InterruptState USB_IRQ_State = InterruptState::NONE;
-
-// USB
-extern "C" void EXTI2_IRQHandler(void) {
-  if (EXTI->PR1 & EXTI_PR1_PR2) {
-    EXTI->PR1 |= EXTI_PR1_PR2;
-    if (TIM13->CR1 & TIM_CR1_CEN)
-      return;
-
-    if (GPIOA->IDR & GPIO_IDR_ID2) {
-      SlipRecorder::Instance().on_PA2_rising();
-      USB_IRQ_State = InterruptState::RISING;
-    } else {
-      SlipRecorder::Instance().on_PA2_falling();
-      USB_IRQ_State = InterruptState::FALLING;
-    }
-    StartUSBDebounceTimer();
-  }
-}
-
-// For the USB connection debounce
-extern "C" void TIM8_UP_TIM13_IRQHandler(void) {
-  Jaffx::Firmware::instance->hardware.PrintLine("TIM13 IRQ Handler Triggered");
-  if (TIM13->SR & TIM_SR_UIF) {
-    TIM13->SR &= ~TIM_SR_UIF;
-
-    if (USB_IRQ_State == InterruptState::NONE)
-      return;
-
-    bool currentState = (GPIOA->IDR & GPIO_IDR_ID2) != 0;
-
-    if (USB_IRQ_State == InterruptState::RISING && currentState) {
-      SlipRecorder::Instance().on_PA2_fully_risen();
-    } else if (USB_IRQ_State == InterruptState::FALLING && !currentState) {
-      SlipRecorder::Instance().on_PA2_fully_fallen();
-    } else {
-      Jaffx::Firmware::instance->hardware.PrintLine("USB: Not a valid bounce");
-    }
-    USB_IRQ_State = InterruptState::NONE;
-    TIM13->CR1 &= ~TIM_CR1_CEN;
-  }
-}
 
 volatile InterruptState SD_IRQ_State = InterruptState::NONE;
 // SD Card Connection Detection IRQ Handler
