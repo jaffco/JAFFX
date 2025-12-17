@@ -281,14 +281,16 @@ public:
   }
 
   void StopRecording() {
-    if (!isRecording)
+
+    if (!isRecording) {
       return;
+    }
+
     isRecording = false;
     ProcessBackgroundWrite(); // Flush remaining
     UpdateWavHeader();
     f_close(&wav_file);
-    Jaffx::Firmware::instance->hardware.PrintLine(
-        "Recording Stopped. Samples: %u", recordedSamples);
+    Jaffx::Firmware::instance->hardware.PrintLine("Recording Stopped. Samples: %u", recordedSamples);
   }
 
   unsigned int GetNextRecordingNumber() {
@@ -341,12 +343,15 @@ public:
 
     // Critical check to avoid hanging if card removed
     if (!sdCardInserted && isRecording) {
+      Jaffx::Firmware::instance->hardware.PrintLine("ProcessBackgroundWrite: SD Card Removed! Stopping recording.");
       isRecording = false;
       return;
     }
 
-    if (!isRecording)
+    if (!isRecording) {
       return;
+    }
+
 
     if (bufferOverflowed) {
       Jaffx::Firmware::instance->hardware.PrintLine("ERROR: Audio FIFO overflow (dropping samples). Stopping recording.");
@@ -366,8 +371,12 @@ public:
       FRESULT res = f_write(&wav_file, tempWriteBuffer,
                             samplesRead * sizeof(float), &bw);
       if (res != FR_OK || bw != samplesRead * sizeof(float)) {
-        isRecording = false;
-        f_close(&wav_file);
+        Jaffx::Firmware::instance->hardware.PrintLine("ProcessBackgroundWrite: SD Write Error! Stopping recording.");
+        Jaffx::Firmware::instance->hardware.PrintLine("FRESULT: %d", res);
+        Jaffx::Firmware::instance->hardware.PrintLine("Bytes Written: %u, Expected: %u", bw, samplesRead * sizeof(float));
+        StopRecording();
+        // isRecording = false;
+        // f_close(&wav_file);
         return;
       }
 
@@ -501,7 +510,7 @@ public:
 
   inline void on_PB12_fully_risen() {
     hardware.PrintLine("SD Card Fully Removed");
-    // CRITICAL: Notify writer immediately
+
     mWavWriter.SetSDInserted(false);
 
     switch (currentState) {
@@ -523,9 +532,6 @@ public:
   inline void on_PB12_fully_fallen() {
     hardware.PrintLine("SD Card Fully Inserted");
     hardware.PrintLine("Resetting to Bootloader...");
-    // Update inserted status, although ResetToBootloader will effectively kill
-    // this anyway
-    mWavWriter.SetSDInserted(true);
 
     System::ResetToBootloader(daisy::System::DAISY);
     switch (currentState) {
@@ -638,8 +644,7 @@ inline void StartSDDebounceTimer() {
 
 
 // Used to software debounce interrupts (using hardware timers)
-enum class InterruptState : unsigned char { // inherit from unsigned char to
-                                            // save space
+enum class InterruptState : unsigned char {                                           
   FALLING = 0,
   RISING = 1,
   NONE = 2
