@@ -27,6 +27,9 @@ float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE / 2];
 // 4096 floats * 4 bytes = 16384 bytes.
 static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 4096;
 
+// Global aligned write buffer for SD operations (32-byte aligned)
+static __attribute__((aligned(32))) float global_write_buffer[SD_WRITE_CHUNK_SAMPLES];
+
 // Ring buffer size in floats (200k floats = 800KB in SDRAM)
 static constexpr size_t RING_BUFFER_SIZE = 200000;
 
@@ -391,7 +394,7 @@ public:
       return;
     }
 
-    float tempWriteBuffer[SD_WRITE_CHUNK_SAMPLES];
+    float* tempWriteBuffer = global_write_buffer;
 
     // Write as many full chunks as are available.
     while (mAudioFifo.Available() >= SD_WRITE_CHUNK_SAMPLES) {
