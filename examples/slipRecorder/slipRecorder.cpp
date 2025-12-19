@@ -1,5 +1,8 @@
+#define LOGGER_DESTINATION LOGGER_EXTERNAL
+
 #include "../../Gimmel/include/utility.hpp"
 #include "../../Jaffx.hpp"
+
 #include "stm32h750xx.h"
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_pwr_ex.h"
