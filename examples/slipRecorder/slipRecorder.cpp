@@ -522,13 +522,13 @@ public:
   SlipRecorder &operator=(const SlipRecorder &) = delete;
   SlipRecorder &operator=(SlipRecorder &&) = delete;
 
-  GPIO mLeds[3];
-  GPIO powerLED;
+  GPIO mGainLeds[3];
+  GPIO powerLED, recLED;
   float RmsReport = 0.f;
   SDCardWavWriter mWavWriter;
 
   inline void deinit() {
-    for (auto &led : mLeds) {
+    for (auto &led : mGainLeds) {
       led.DeInit();
     }
     mWavWriter.StopRecording();
@@ -549,14 +549,16 @@ public:
 
   inline void init() override {
     System::Delay(100);
-    hardware.StartLog(true);
+    // hardware.StartLog(true);
     System::Delay(100);
     hardware.PrintLine("Starting Init");
     // Initialize LEDs
-    mLeds[0].Init(seed::D21, GPIO::Mode::OUTPUT);
-    mLeds[1].Init(seed::D20, GPIO::Mode::OUTPUT);
-    mLeds[2].Init(seed::D19, GPIO::Mode::OUTPUT);
+    mGainLeds[0].Init(seed::D21, GPIO::Mode::OUTPUT);
+    mGainLeds[1].Init(seed::D20, GPIO::Mode::OUTPUT);
+    mGainLeds[2].Init(seed::D19, GPIO::Mode::OUTPUT);
     powerLED.Init(seed::D22, GPIO::Mode::OUTPUT);
+    recLED.Init(seed::D23, GPIO::Mode::OUTPUT);
+    powerLED.Write(true); // Indicate power on
     hardware.PrintLine("LEDs Init-ed");
 
     // Initialize SD card
@@ -584,9 +586,9 @@ public:
       }
     }
 
-    powerLED.Write(true); // Indicate power on
     if (mWavWriter.recording()) {
       hardware.SetLed(true);
+      recLED.Write(true);
     }
   }
 
@@ -632,23 +634,24 @@ public:
     float dB = 20.0f * log10f(RmsReport + 1e-12f);
 
     if (dB >= 0.0f) {
-      mLeds[0].Write(true);
-      mLeds[1].Write(true);
-      mLeds[2].Write(true);
+      mGainLeds[0].Write(true);
+      mGainLeds[1].Write(true);
+      mGainLeds[2].Write(true);
     } else if (dB >= -6.0f) {
-      mLeds[0].Write(false);
-      mLeds[1].Write(true);
-      mLeds[2].Write(true);
+      mGainLeds[0].Write(false);
+      mGainLeds[1].Write(true);
+      mGainLeds[2].Write(true);
     } else if (dB >= -20.0f) {
-      mLeds[0].Write(false);
-      mLeds[1].Write(false);
-      mLeds[2].Write(true);
+      mGainLeds[0].Write(false);
+      mGainLeds[1].Write(false);
+      mGainLeds[2].Write(true);
     } else {
-      mLeds[0].Write(false);
-      mLeds[1].Write(false);
-      mLeds[2].Write(false);
+      mGainLeds[0].Write(false);
+      mGainLeds[1].Write(false);
+      mGainLeds[2].Write(false);
     }
     hardware.SetLed(mWavWriter.recording());
+    recLED.Write(mWavWriter.recording());
   }
 
   void loop() override {
