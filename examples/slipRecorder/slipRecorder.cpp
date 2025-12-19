@@ -26,7 +26,7 @@ float DMA_BUFFER_MEM_SECTION dmaAudioBuffer[2][BLOCKSIZE / 2];
 
 // SD write chunk in float samples (interleaved). Keep bytes aligned to SD blocks.
 // 4096 floats * 4 bytes = 16384 bytes.
-static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 4096;
+static constexpr size_t SD_WRITE_CHUNK_SAMPLES = 8192;
 
 // Global aligned write buffer for SD operations (32-byte aligned)
 static __attribute__((aligned(32))) float global_write_buffer[SD_WRITE_CHUNK_SAMPLES];
