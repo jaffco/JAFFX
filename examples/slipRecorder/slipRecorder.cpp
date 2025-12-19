@@ -3,6 +3,7 @@
 #include "stm32h750xx.h"
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_pwr_ex.h"
+#include <cmsis_gcc.h>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -413,8 +414,11 @@ public:
 
       UINT bw;
       uint32_t write_start_time = System::GetUs();
+      __disable_irq();
       FRESULT res = f_write(&wav_file, tempWriteBuffer,
                             samplesRead * sizeof(float), &bw);
+      __enable_irq();
+
       uint32_t write_end_time = System::GetUs();
       uint32_t write_duration_us = write_end_time - write_start_time;
 
@@ -445,7 +449,9 @@ public:
       recordedSamples += samplesRead;
 
       if (System::GetNow() - lastSyncTime > 5000) {
+        __disable_irq();
         UpdateWavHeader();
+        __enable_irq();
         lastSyncTime = System::GetNow();
       }
     }
