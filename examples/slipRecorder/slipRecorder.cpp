@@ -609,6 +609,7 @@ public:
 
   void on_PB12_rising() { 
     hardware.PrintLine("SD Card: Rising Edge Detected"); 
+    System::ResetToBootloader(daisy::System::DAISY);
   }
 
   inline void on_PB12_fully_risen() {
@@ -622,6 +623,7 @@ public:
 
   void on_PB12_falling() { 
     hardware.PrintLine("SD Card: Falling Edge Detected"); 
+    System::ResetToBootloader(daisy::System::DAISY);
   }
 
   inline void on_PB12_fully_fallen() {
