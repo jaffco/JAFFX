@@ -167,8 +167,10 @@ public:
     void init() override {
         hardware.SetLed(sdWriter.InitSDCard());
         mOsc.setFrequency(220.0f);
+        
+        // Pre-allocate all blocks
         for (size_t i = 0; i < MAX_BLOCKS; i++) {
-            audioBlocks[i] = nullptr;
+            audioBlocks[i] = (float*)giml::malloc(sizeof(float) * buffersize);
         }
 
         System::Delay(100);
@@ -188,18 +190,14 @@ public:
         }
 
         if (!stopRecording) {
-            if (!(blocksFilled >= MAX_BLOCKS)) {
-                audioBlocks[blocksFilled] = (float*)giml::malloc(sizeof(float) * size);
-                if (audioBlocks[blocksFilled] != nullptr) {
-                    memcpy(audioBlocks[blocksFilled], out[0], sizeof(float) * size);
-                    blocksFilled++;
-                } 
-                else {
-                    stopRecording = true; // failure to allocate memory
-                }
-            } 
-            else {
-                stopRecording = true; // max blocks reached
+            size_t nextBlock = blocksFilled % MAX_BLOCKS;
+            
+            // Check for overflow (writer caught up to reader)
+            if (blocksFilled - blocksWritten >= MAX_BLOCKS) {
+                stopRecording = true;
+            } else {
+                memcpy(audioBlocks[nextBlock], out[0], sizeof(float) * size);
+                blocksFilled++;
             }
         }
         return;
@@ -208,26 +206,26 @@ public:
     void loop() override {
         while (blocksWritten < blocksFilled) {
 
-            // update header if flagged
+            // Update WAV header if flagged
             if (updateHeaderFlag) {
                 sdWriter.UpdateWavHeader();
                 updateHeaderFlag = false;
             }
 
-            // write next block
-            if (!sdWriter.writeBlock(audioBlocks[blocksWritten], buffersize)) {
-                hardware.SetLed(false); // indicate error
+            size_t currentBlock = blocksWritten % MAX_BLOCKS;
+            
+            if (!sdWriter.writeBlock(audioBlocks[currentBlock], buffersize)) {
+                hardware.SetLed(false);
                 stopRecording = true;
                 break;
-            } 
-
-            giml::free(audioBlocks[blocksWritten]);
-            audioBlocks[blocksWritten] = nullptr;
+            }
+            
+            // Don't free - we're reusing the block!
             blocksWritten++;
         }
 
         // finalize if recording stopped and all blocks written
-        if (stopRecording && blocksWritten >= blocksFilled) {
+        if (stopRecording) {
             sdWriter.UpdateWavHeader();
             hardware.SetLed(false); // turn off when done
             stopRecording = false; // prevent re-entry
