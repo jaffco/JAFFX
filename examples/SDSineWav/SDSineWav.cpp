@@ -5,11 +5,12 @@
 #include "fatfs.h"
 
 #define TEST_FILE_NAME "SDSine.wav"
+#define MAX_BLOCKS 1000
 
-#define SAMPLES_TO_WRITE 48000 * 5 // 5 second buffer at 48kHz 
-
-float** globalPtr = nullptr;
+float* audioBlocks[MAX_BLOCKS];
+volatile size_t blocksFilled = 0;
 size_t blocksWritten = 0;
+volatile bool stopRecording = false;
 
 class SDWriter {
 private:
@@ -17,6 +18,7 @@ private:
     SdmmcHandler*   pSD = nullptr;
     FatFSInterface* pFSI = nullptr;
     FIL*            pSDFile = nullptr;
+    size_t totalSamplesWritten = 0;
 
 
     // size_t len, failcnt, byteswritten;
@@ -86,34 +88,34 @@ public:
         return true; // we're recording!
     }
 
-    bool writeAudioBuffer() {
+    bool writeBlock(float* block, size_t blockSize) {
+        UINT bytes_written;
+        size_t bytes_to_write = sizeof(float) * blockSize;
 
-        for (size_t i = 0; i < SAMPLES_TO_WRITE / Jaffx::Firmware::instance->buffersize; i++) {
-            UINT bytes_written;
-            size_t bytes_to_write = sizeof(float) * Jaffx::Firmware::instance->buffersize;
+        // Write the data to the SD Card.        
+        FRESULT res = f_write(pSDFile, block, bytes_to_write, &bytes_written);
 
-
-            // Open and write the test file to the SD Card.        
-            FRESULT res = f_write(pSDFile, globalPtr[i], bytes_to_write, &bytes_written);
-
-            if (bytes_written < bytes_to_write) {
-                // Error writing - stop recording to prevent corruption
-                return false;
-            }
-            
-            if(res != FR_OK || bytes_written != bytes_to_write) {
-                // Error writing - stop recording to prevent corruption
-                return false ;
-            }
+        // check if write was successful
+        if (res != FR_OK || bytes_written != bytes_to_write) {
+            // Error writing - stop recording to prevent corruption
+            return false;
         }
-        FRESULT res = UpdateWavHeader();
+
+        res = f_sync(pSDFile);
+        // check if sync was successful
+        if (res != FR_OK) {
+            // Error syncing - stop recording to prevent corruption
+            return false;
+        }
+
+        totalSamplesWritten += blockSize;
         return true;
     }
 
     FRESULT UpdateWavHeader() {
 
         FSIZE_t current_pos = f_tell(pSDFile);
-        unsigned int dataSize = SAMPLES_TO_WRITE * sizeof(float);
+        unsigned int dataSize = totalSamplesWritten * sizeof(float);
         unsigned int fileSize = dataSize + sizeof(WavHeader) - 8;
 
         FRESULT res;
@@ -159,19 +161,14 @@ class SDSineWav : public Jaffx::Firmware {
 private:
     SDWriter sdWriter;
     giml::SinOsc<float> mOsc{samplerate};
-    bool timeToWrite = false;
-
+    bool updateHeaderFlag = false;
 
 public:
     void init() override {
         hardware.SetLed(sdWriter.InitSDCard());
         mOsc.setFrequency(220.0f);
-        giml::free(globalPtr);
-
-        // Allocate the array of pointers FIRST
-        globalPtr = (float**)giml::malloc(sizeof(float*) * (SAMPLES_TO_WRITE / buffersize));
-        for (size_t i = 0; i < SAMPLES_TO_WRITE / buffersize; i++) {
-            globalPtr[i] = nullptr;
+        for (size_t i = 0; i < MAX_BLOCKS; i++) {
+            audioBlocks[i] = nullptr;
         }
 
         System::Delay(100);
@@ -183,26 +180,60 @@ public:
             out[1][i] = out[0][i];
         }
 
-        if (!timeToWrite) {
+        static size_t counter = 0;
+        counter++;
+        if (counter >= (samplerate / size) * 5) { // update header every 5 seconds
+            updateHeaderFlag = true;
+            counter = 0;
+        }
 
-            // get a block and copy data into it
-            globalPtr[blocksWritten] = (float*)giml::malloc(sizeof(float) * size); 
-            memcpy(globalPtr[blocksWritten], out[0], sizeof(float) * size);
-            blocksWritten++;
-            
-            // check if we're done
-            if (blocksWritten * size >= SAMPLES_TO_WRITE) {
-                timeToWrite = true;
+        if (!stopRecording) {
+            if (!(blocksFilled >= MAX_BLOCKS)) {
+                audioBlocks[blocksFilled] = (float*)giml::malloc(sizeof(float) * size);
+                if (audioBlocks[blocksFilled] != nullptr) {
+                    memcpy(audioBlocks[blocksFilled], out[0], sizeof(float) * size);
+                    blocksFilled++;
+                } 
+                else {
+                    stopRecording = true; // failure to allocate memory
+                }
+            } 
+            else {
+                stopRecording = true; // max blocks reached
             }
         }
         return;
     }
 
     void loop() override {
-        if (globalPtr != nullptr && timeToWrite) {
-            hardware.SetLed(!sdWriter.writeAudioBuffer());
-            while (true) {} // halt after one write
+        while (blocksWritten < blocksFilled) {
+
+            // update header if flagged
+            if (updateHeaderFlag) {
+                sdWriter.UpdateWavHeader();
+                updateHeaderFlag = false;
+            }
+
+            // write next block
+            if (!sdWriter.writeBlock(audioBlocks[blocksWritten], buffersize)) {
+                hardware.SetLed(false); // indicate error
+                stopRecording = true;
+                break;
+            } 
+
+            giml::free(audioBlocks[blocksWritten]);
+            audioBlocks[blocksWritten] = nullptr;
+            blocksWritten++;
         }
+
+        // finalize if recording stopped and all blocks written
+        if (stopRecording && blocksWritten >= blocksFilled) {
+            sdWriter.UpdateWavHeader();
+            hardware.SetLed(false); // turn off when done
+            stopRecording = false; // prevent re-entry
+            while (true) {} // halt here
+        }
+        
         System::Delay(1);
     }
 };
