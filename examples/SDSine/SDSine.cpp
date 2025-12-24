@@ -56,9 +56,9 @@ public:
         return true;
     }
 
-    bool writeCount(int count) {
+    bool writeCount(float count) {
 
-        sprintf(outbuff, "Count: %d\n", count);
+        sprintf(outbuff, "Count: " FLT_FMT3 "\n", FLT_VAR3(count));
         len = strlen(outbuff);
 
         UINT bytes_written;
@@ -83,7 +83,7 @@ class SDSine : public Jaffx::Firmware {
 private:
     SDWriter sdWriter;
     giml::SinOsc<float> mOsc{samplerate};
-    unsigned int count = 0;
+    float count = 0.f;
 
 public:
     void init() override {
@@ -96,7 +96,7 @@ public:
         // giml::free(globalPtr);
         // globalPtr = (float*)giml::malloc(sizeof(float));
         // *globalPtr = static_cast<float>(count++);
-        count++;
+        count += 1.f;
         // auto* ptr = (float*)giml::malloc(sizeof(float));
         // if (!ptr) {
         //     giml::free(ptr);
