@@ -93,10 +93,9 @@ public:
     }
 
     void CustomAudioBlockCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) override {
-        // giml::free(globalPtr);
-        // globalPtr = (float*)giml::malloc(sizeof(float));
-        // *globalPtr = static_cast<float>(count++);
-        count += 1.f;
+        giml::free(globalPtr);
+        globalPtr = (float*)giml::malloc(sizeof(float));
+        *globalPtr = static_cast<float>(count += 1.f);
         // auto* ptr = (float*)giml::malloc(sizeof(float));
         // if (!ptr) {
         //     giml::free(ptr);
@@ -120,7 +119,9 @@ public:
     }
 
     void loop() override {
-        hardware.SetLed(sdWriter.writeCount(count));
+        if (globalPtr != nullptr) {
+            hardware.SetLed(sdWriter.writeCount(count));            
+        }
         System::Delay(1);
     }
 };
