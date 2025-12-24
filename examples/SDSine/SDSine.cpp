@@ -16,7 +16,7 @@ private:
     FIL*            pSDFile = nullptr;
 
     // Vars and buffs.
-    char   outbuff[512];
+    char   outbuff[8192];
     size_t len, failcnt, byteswritten;
 
 public:
@@ -56,9 +56,12 @@ public:
         return true;
     }
 
-    bool writeCount(float count) {
-
-        sprintf(outbuff, "Count: " FLT_FMT3 "\n", FLT_VAR3(count));
+    bool writeAudioBuffer(float* data, size_t size) {
+        size_t offset = 0;
+        for (size_t i = 0; i < 5; i++) {
+            sprintf(outbuff + offset, "Sample #%u: " FLT_FMT3 "\n", (unsigned)i, FLT_VAR3(data[i]));
+            offset += strlen(outbuff + offset);
+        }
         len = strlen(outbuff);
 
         UINT bytes_written;
@@ -83,7 +86,8 @@ class SDSine : public Jaffx::Firmware {
 private:
     SDWriter sdWriter;
     giml::SinOsc<float> mOsc{samplerate};
-    float count = 0.f;
+    bool firstRun = true;
+
 
 public:
     void init() override {
@@ -93,34 +97,23 @@ public:
     }
 
     void CustomAudioBlockCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) override {
-        giml::free(globalPtr);
-        globalPtr = (float*)giml::malloc(sizeof(float));
-        *globalPtr = static_cast<float>(count += 1.f);
-        // auto* ptr = (float*)giml::malloc(sizeof(float));
-        // if (!ptr) {
-        //     giml::free(ptr);
-        //     return;
-        // }       
-        // *ptr = count++;
-
-        // // Allocate node
-        // AudioBlockNode* node = (AudioBlockNode*)giml::malloc(sizeof(AudioBlockNode));
-        // if (!node) {
-        //     giml::free(node);
-        //     return;
-        // }
-
-        // node->data = ptr;
-        // node->originalPtr = originalPtr;
-        // node->blockSizeFloats = size * 2; // total floats (stereo interleaved)
-
-        // // Push to shared list (IRQ-safe inside)
-        // PushBlock(node);        
+        for (size_t i = 0; i < size; i++) {
+            out[0][i] = mOsc.processSample();
+            out[1][i] = out[0][i];
+        }
+        if (firstRun) {
+            giml::free(globalPtr);
+            globalPtr = (float*)giml::malloc(sizeof(float) * size);
+            memcpy(globalPtr, out[0], sizeof(float) * size);
+            firstRun = false;
+        }
+        return;
     }
 
     void loop() override {
-        if (globalPtr != nullptr) {
-            hardware.SetLed(sdWriter.writeCount(count));            
+        if (globalPtr != nullptr && !firstRun) {
+            hardware.SetLed(sdWriter.writeAudioBuffer(globalPtr, buffersize));
+            while (true) {} // halt after one write
         }
         System::Delay(1);
     }
