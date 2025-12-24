@@ -8,7 +8,8 @@
 
 #define SAMPLES_TO_WRITE 48000 * 5 // 5 second buffer at 48kHz 
 
-float* globalPtr = nullptr;
+float** globalPtr = nullptr;
+size_t blocksWritten = 0;
 
 class SDWriter {
 private:
@@ -85,26 +86,27 @@ public:
         return true; // we're recording!
     }
 
-    bool writeAudioBuffer(float* data) {
+    bool writeAudioBuffer() {
 
-        UINT bytes_written;
-        size_t bytes_to_write = sizeof(float) * SAMPLES_TO_WRITE;
+        for (size_t i = 0; i < SAMPLES_TO_WRITE / Jaffx::Firmware::instance->buffersize; i++) {
+            UINT bytes_written;
+            size_t bytes_to_write = sizeof(float) * Jaffx::Firmware::instance->buffersize;
 
-        // Open and write the test file to the SD Card.        
-        FRESULT res = f_write(pSDFile, globalPtr, bytes_to_write, &bytes_written);
 
-        if (bytes_written < bytes_to_write) {
-            // Error writing - stop recording to prevent corruption
-            return false;
+            // Open and write the test file to the SD Card.        
+            FRESULT res = f_write(pSDFile, globalPtr[i], bytes_to_write, &bytes_written);
+
+            if (bytes_written < bytes_to_write) {
+                // Error writing - stop recording to prevent corruption
+                return false;
+            }
+            
+            if(res != FR_OK || bytes_written != bytes_to_write) {
+                // Error writing - stop recording to prevent corruption
+                return false ;
+            }
         }
-
-        res = this->UpdateWavHeader();
-        
-        if(res != FR_OK || bytes_written != bytes_to_write) {
-            // Error writing - stop recording to prevent corruption
-            return false ;
-        }
-
+        FRESULT res = UpdateWavHeader();
         return true;
     }
 
@@ -165,7 +167,13 @@ public:
         hardware.SetLed(sdWriter.InitSDCard());
         mOsc.setFrequency(220.0f);
         giml::free(globalPtr);
-        globalPtr = globalPtr = (float*)giml::malloc(sizeof(float) * samplerate); // 1 second buffer
+
+        // Allocate the array of pointers FIRST
+        globalPtr = (float**)giml::malloc(sizeof(float*) * (SAMPLES_TO_WRITE / buffersize));
+        for (size_t i = 0; i < SAMPLES_TO_WRITE / buffersize; i++) {
+            globalPtr[i] = nullptr;
+        }
+
         System::Delay(100);
     }
 
@@ -174,12 +182,16 @@ public:
             out[0][i] = mOsc.processSample();
             out[1][i] = out[0][i];
         }
+
         if (!timeToWrite) {
-            static size_t writeIndex = 0;
-            memcpy(globalPtr + writeIndex, out[0], sizeof(float) * size);
-            writeIndex += size;
-            if (writeIndex >= SAMPLES_TO_WRITE) {
-                writeIndex = 0;
+
+            // get a block and copy data into it
+            globalPtr[blocksWritten] = (float*)giml::malloc(sizeof(float) * size); 
+            memcpy(globalPtr[blocksWritten], out[0], sizeof(float) * size);
+            blocksWritten++;
+            
+            // check if we're done
+            if (blocksWritten * size >= SAMPLES_TO_WRITE) {
                 timeToWrite = true;
             }
         }
@@ -188,7 +200,7 @@ public:
 
     void loop() override {
         if (globalPtr != nullptr && timeToWrite) {
-            hardware.SetLed(!sdWriter.writeAudioBuffer(globalPtr));
+            hardware.SetLed(!sdWriter.writeAudioBuffer());
             while (true) {} // halt after one write
         }
         System::Delay(1);
