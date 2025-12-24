@@ -58,8 +58,8 @@ public:
 
     bool writeAudioBuffer(float* data, size_t size) {
         size_t offset = 0;
-        for (size_t i = 0; i < 5; i++) {
-            sprintf(outbuff + offset, "Sample #%u: " FLT_FMT3 "\n", (unsigned)i, FLT_VAR3(data[i]));
+        for (size_t i = 0; i < 64; i++) {
+            sprintf(outbuff + offset, "#%u:" FLT_FMT3 "\n", (unsigned)i, FLT_VAR3(data[i]));
             offset += strlen(outbuff + offset);
         }
         len = strlen(outbuff);
@@ -69,7 +69,13 @@ public:
 
         // Open and write the test file to the SD Card.        
         FRESULT res = f_write(pSDFile, outbuff, len, &bytes_written);
-        f_sync(pSDFile);
+
+        if (bytes_written < bytes_to_write) {
+            // Error writing - stop recording to prevent corruption
+            return false ;
+        }
+
+        res= f_sync(pSDFile);
         
         if(res != FR_OK || bytes_written != len) {
             // Error writing - stop recording to prevent corruption
@@ -94,6 +100,7 @@ public:
         hardware.SetLed(sdWriter.InitSDCard());
         mOsc.setFrequency(220.0f);
         System::Delay(100);
+        hardware.SetLed(false);
     }
 
     void CustomAudioBlockCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size) override {
