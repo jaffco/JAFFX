@@ -11,12 +11,16 @@ extern "C" {
 typedef struct {
     uint32_t abi_version;
 
-    void (*initPlugin)(void* instance);
+    void (*initPlugin)();
     void (*processAudio)(
-        void* instance,
         float* in,
         float* out,
         uint32_t frames
+    );
+    void (*dummyAdd)(
+        float* in1,
+        float* in2,
+        float* out
     );
 
 } LPA_Entry;

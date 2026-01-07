@@ -6,7 +6,7 @@ There is a separate standalone project inside of this folder, under `./nativePlu
 ## Step 1: Write standalone code in the `nativePlugin/` folder.
 Write standalone code in the `nativePlugin/` folder and export the desired functions.
 - The `lpa_abi.h` file is used to export these functions, this is a purely C ABI. Use this file to bridge the gap between the standalone code and the main firmware (export only the bare minimum functions needed). There is an `LPA_Entry` struct where you can define more functions to implement in .c/.cpp files.
-- Make sure to follow the example on how to properly define the `LPA_Entry` instance at the bottom of the source file. Use the proper attributes for alignment (based on the types of fields used) and preventing deadstripping of the struct or function definitions. To help with this, use:
+- Make sure to follow the example in `./nativePlugin/nativePlugin.cpp` on how to properly define the `LPA_Entry` instance at the bottom of the source file. Use the proper attributes for alignment (based on the types of fields used) and preventing deadstripping of the struct or function definitions. To help with this, use:
     - `arm-none-eabi-objdump -h build/nativePluginTest.elf` to verify that there is a .entry section added at location 0x0.
     ```
     build/nativePluginTest.elf:     file format elf32-littlearm
@@ -28,4 +28,4 @@ Write standalone code in the `nativePlugin/` folder and export the desired funct
 Running `make` will output a `.bin` that can be manually loaded into memory for running in the main firmware. For easier access, a header file containing the binary as a C-style array is automatically generated as well. Just include the header file in the main firmware and access it as normal.
 
 ## Step 3: Load into firmware and run
-Because the `.entry` struct was placed at 0x0, it is the 0th element in the memory section where the binary is loaded into. Use a typecast to the `LPA_Entry` struct and functions can be called directly from there in C/C++ source files.
+Because the `.entry` struct was placed at 0x0, it is the 0th element in the memory section where the binary is loaded into. Use a typecast to the `LPA_Entry` struct in the main firmware and functions can be called directly from there in C/C++ source files. See `./nativePluginTest.cpp` for an example on how to invoke this.

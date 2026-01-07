@@ -1,24 +1,23 @@
 #include "lpa_abi.h"
 
-struct MyPlugin {
-    float gain;
-};
+float gain;
 
-extern "C" void lpa_init(void* instance) {
-    MyPlugin* p = (MyPlugin*)instance;
-    p->gain = 0.5f;
+extern "C" void lpa_init() {
+    gain = 0.5f;
 }
 
 extern "C" void lpa_process(
-    void* instance,
     float* in,
     float* out,
     uint32_t frames
 ) {
-    MyPlugin* p = (MyPlugin*)instance;
     for(uint32_t i = 0; i < frames; i++) {
-        out[i] = in[i] * p->gain;
+        out[i] = in[i] * gain;
     }
+}
+
+extern "C" void dummyAdd(float* in1, float* in2, float* out) {
+    *out = *in1 + *in2;
 }
 
 extern "C" {
@@ -28,6 +27,7 @@ const LPA_Entry lpa_entry = {
     .abi_version = 1,
     .initPlugin        = lpa_init,
     .processAudio     = lpa_process,
+    .dummyAdd           = dummyAdd
 };
 
 }

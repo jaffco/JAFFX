@@ -1,6 +1,6 @@
-TARGET      = nativePluginTest
+TARGET      = nativePlugin
 BUILD_DIR   = build
-CPP_SOURCE  = nativePluginTest.cpp
+CPP_SOURCE  = nativePlugin.cpp
 LD_SCRIPT   = lpa.ld
 
 CXX         = arm-none-eabi-g++
@@ -10,7 +10,7 @@ OBJDUMP     = arm-none-eabi-objdump
 ELF         = $(BUILD_DIR)/$(TARGET).elf
 BIN         = $(BUILD_DIR)/$(TARGET).bin
 DISASM      = $(BUILD_DIR)/$(TARGET).disasm
-PLUGIN_HDR  = $(BUILD_DIR)/plugin_binary.h
+PLUGIN_HDR  = $(BUILD_DIR)/$(TARGET).h
 
 CXXFLAGS = \
   -mcpu=cortex-m7 \
@@ -52,6 +52,7 @@ $(BIN): $(ELF)
 
 # Generate C header from binary (default build only)
 $(PLUGIN_HDR): $(BIN)
+  # Adding this for Daisy to place in .SRAM section (executable memory)
 	@echo '__attribute__((section(".sram1_bss")))' > $@
 	xxd -i $< >> $@
 
@@ -70,4 +71,3 @@ clean:
 .PHONY: all clean disasm
 
 # Run: `arm-none-eabi-objdump -h build/nativePluginTest.elf` to see the .entry section
-# TODO: Add `xxd -i ./build/nativePluginTest.bin > plugin_binary.h`
