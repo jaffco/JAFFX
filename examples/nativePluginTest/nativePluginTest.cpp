@@ -62,24 +62,50 @@ class NativePluginTest : public Jaffx::Firmware {
 
         this->hardware.PrintLine("Loading plugin from embedded binary...");
         // Typecast the pointer and access the code using this entry struct at the beginning of the program
-        pluginInstance = reinterpret_cast<const LPA_Entry*>(build_nativePlugin_bin);
-        this->hardware.PrintLine("Plugin loaded at address: %p", pluginInstance);
+        const LPA_Entry* rawEntry = reinterpret_cast<const LPA_Entry*>(build_nativePlugin_bin);
+        this->hardware.PrintLine("Plugin loaded at address: %p", rawEntry);
 
         this->hardware.PrintLine("Verifying plugin ABI version and function pointers...");
 
-        if (pluginInstance->abi_version != 1) {
+        if (rawEntry->abi_version != 1) {
             // We should log error, we don't support this yet. Also something went wrong with file loading
-            this->hardware.PrintLine("[ERROR] Unsupported plugin ABI version: %d", pluginInstance->abi_version);
-            while (true) {} // halt here
+            this->hardware.PrintLine("[ERROR] Unsupported plugin ABI version: %d", rawEntry->abi_version);
+            System::ResetToBootloader(System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
         }
 
+        // The function pointers in the binary are relative to address 0x00
+        // We need to adjust them to the actual load address
+        uintptr_t baseAddress = reinterpret_cast<uintptr_t>(build_nativePlugin_bin);
+        this->hardware.PrintLine("Base address: 0x%08X", (unsigned int)baseAddress);
+        
+        // Create a corrected entry structure with adjusted function pointers
+        static LPA_Entry correctedEntry;
+        correctedEntry.abi_version = rawEntry->abi_version;
+        
+        // Adjust function pointers by adding the base address
+        correctedEntry.initPlugin = reinterpret_cast<void(*)()>(
+            baseAddress + reinterpret_cast<uintptr_t>(rawEntry->initPlugin)
+        );
+        correctedEntry.processAudio = reinterpret_cast<void(*)(float*, float*, uint32_t)>(
+            baseAddress + reinterpret_cast<uintptr_t>(rawEntry->processAudio)
+        );
+        correctedEntry.dummyAdd = reinterpret_cast<void(*)(float*, float*, float*)>(
+            baseAddress + reinterpret_cast<uintptr_t>(rawEntry->dummyAdd)
+        );
+        
+        pluginInstance = &correctedEntry;
+        
         if (!pluginInstance->initPlugin || !pluginInstance->processAudio) {
             // Log an error, these weren't brought into memory properly
             this->hardware.PrintLine("[ERROR] Plugin function pointers are null!");
+            System::ResetToBootloader(System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
         }
 
         this->hardware.PrintLine("Plugin ABI version: %d", pluginInstance->abi_version);
-        this->hardware.PrintLine("Plugin function pointers verified.");
+        this->hardware.PrintLine("initPlugin:    %p -> %p", rawEntry->initPlugin, pluginInstance->initPlugin);
+        this->hardware.PrintLine("processAudio:  %p -> %p", rawEntry->processAudio, pluginInstance->processAudio);
+        this->hardware.PrintLine("dummyAdd:      %p -> %p", rawEntry->dummyAdd, pluginInstance->dummyAdd);
+        this->hardware.PrintLine("Plugin function pointers verified and adjusted.");
 
         this->hardware.PrintLine("Initializing plugin...");
         pluginInstance->initPlugin();

@@ -52,9 +52,14 @@ $(BIN): $(ELF)
 
 # Generate C header from binary (default build only)
 $(PLUGIN_HDR): $(BIN)
-  # Adding this for Daisy to place in .SRAM section (executable memory)
-	@echo '__attribute__((section(".sram1_bss")))' > $@
-	xxd -i $< >> $@
+  # Adding proper alignment and section for executable code in SRAM
+  # const ensures data is in initialized .data section, not .bss
+  # aligned(16) ensures proper alignment for both code and data
+	@echo '__attribute__((section(".sram1_data"), aligned(16)))' > $@
+	@echo 'const unsigned char build_nativePlugin_bin[] = {' >> $@
+	@xxd -i < $< | grep -v 'unsigned char' | grep -v '};' >> $@
+	@echo '};' >> $@
+	@echo 'const unsigned int build_nativePlugin_bin_len = '`wc -c < $< | tr -d ' '`';' >> $@
 
 # -------------------------
 # Disassembly target
