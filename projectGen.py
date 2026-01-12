@@ -9,8 +9,8 @@ import re
 
 def generate_project(project_name):
     # Define paths
-    template_dir = 'src/template'
-    new_project_dir = f'src/{project_name}'
+    template_dir = 'examples/template'
+    new_project_dir = f'examples/{project_name}'
     
     # Validate input
     if not project_name:

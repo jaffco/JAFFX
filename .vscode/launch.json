@@ -1,0 +1,37 @@
+{
+  "configurations": [
+    {
+      "configFiles": [
+        "interface/stlink.cfg",
+        "target/stm32h7x.cfg"
+      ],
+      "cwd": "${workspaceFolder}",
+      "debuggerArgs": [
+        "-d",
+        "${workspaceRoot}"
+      ],
+      "executable": "${workspaceFolder}/examples/${fileDirnameBasename}/build/${fileDirnameBasename}.elf",
+      "interface": "swd",
+      "name": "Cortex Debug (Dynamic from Active File)",
+      "openOCDLaunchCommands": [
+        "init",
+        "gdb_breakpoint_override hard", // Needed for SRAM apps
+        "reset init"
+      ],
+      "preLaunchTask": "Build & Program", 
+      "preRestartCommands": [
+        "load",
+        "enable breakpoint",
+        "monitor reset"
+      ],
+      "request": "launch",
+      "runToMain": true,
+      // "serverpath": "/path/to/your/openocd", // Need to set manually in some cases
+      "servertype": "openocd",
+      "showDevDebugOutput": true,
+      "svdFile": "${workspaceRoot}/.vscode/STM32H750x.svd",
+      "type": "cortex-debug"
+    }
+  ],
+  "version": "0.2.0"
+}
