@@ -21,7 +21,7 @@ USB-C Power Delivery controller integration for Daisy Seed, enabling power profi
 - [x] Interrupt pin monitoring (GPIO polling)
 
 ### 🚧 In Progress (Phase 2: CC Detection & PD Protocol)
-- [ ] CC line detection for cable orientation
+- [x] CC line detection for cable orientation
 - [ ] BMC receiver configuration
 - [ ] USB-PD protocol stack integration from [usb-c-arduino](https://github.com/graycatlabs/usb-c-arduino)
 - [ ] Source Capabilities (PDO) parsing
