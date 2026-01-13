@@ -114,6 +114,8 @@ class FUSB302 : public Jaffx::Firmware {
     I2CHandle i2c4;
     GPIO intPin;
     GPIO vbusPin;  // D28 - VBUS sense
+    GPIO dpPin;    // D30 - D+ for BC1.2 detection
+    GPIO dmPin;    // D29 - D- for BC1.2 detection
     bool chipDetected = false;
     uint32_t lastPrintTime = 0;
     uint32_t lastPDCheck = 0;
@@ -126,6 +128,9 @@ class FUSB302 : public Jaffx::Firmware {
     uint32_t srcCaps[7];  // Up to 7 PDOs
     int srcCapCount = 0;
     bool capsReceived = false;
+    
+    // BC1.2 detection state
+    bool usbAMode = false;  // True if USB-A adapter detected
     
     void InitI2C4() {
         I2CHandle::Config i2c_config;
@@ -148,6 +153,12 @@ class FUSB302 : public Jaffx::Firmware {
     
     bool ReadVBus() {
         return vbusPin.Read(); // Returns true if VBUS is present (5V)
+    }
+    
+    void InitUSBDataPins() {
+        // Initialize D+ and D- with pull-down for BC1.2 detection
+        dpPin.Init(DaisySeed::GetPin(30), GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN); // D30 - D+
+        dmPin.Init(DaisySeed::GetPin(29), GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN); // D29 - D-
     }
     
     // Detect which CC line is active
@@ -503,6 +514,63 @@ class FUSB302 : public Jaffx::Firmware {
             }
         }
     }
+    
+    // BC1.2 (Battery Charging 1.2) detection for USB Type-A
+    // Uses D+ (D30) and D- (D29) pins for detection
+    void DetectBC12() {
+        hardware.PrintLine("\n=== BC1.2 Detection (USB Type-A) ===");
+        hardware.PrintLine("D+ on D30, D- on D29");
+        
+        InitUSBDataPins();
+        System::Delay(10); // Allow pins to settle
+        
+        // Read initial state with pull-downs enabled
+        bool dp_low = dpPin.Read();
+        bool dm_low = dmPin.Read();
+        
+        hardware.PrintLine("Initial state (with pull-downs): D+=%s D-=%s", 
+                          dp_low ? "HIGH" : "LOW", dm_low ? "HIGH" : "LOW");
+        
+        // Now configure as inputs without pull-downs to detect if shorted high
+        dpPin.Init(DaisySeed::GetPin(30), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+        dmPin.Init(DaisySeed::GetPin(29), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+        System::Delay(10);
+        
+        bool dp_float = dpPin.Read();
+        bool dm_float = dmPin.Read();
+        
+        hardware.PrintLine("Floating state (no pulls): D+=%s D-=%s", 
+                          dp_float ? "HIGH" : "LOW", dm_float ? "HIGH" : "LOW");
+        
+        // Detect port type
+        const char* portType = "UNKNOWN";
+        int maxCurrent = 0;
+        
+        if (dp_float && dm_float) {
+            // Both lines are high when floating = likely shorted together (DCP)
+            portType = "DCP (Dedicated Charging Port)";
+            maxCurrent = 1500; // 1.5A
+            hardware.PrintLine("Detection: D+/D- both HIGH when floating = shorted together");
+        } else if (!dp_float && !dm_float) {
+            // Both lines stay low = Standard Downstream Port (SDP)
+            portType = "SDP (Standard Downstream Port)";
+            maxCurrent = 500; // 500mA for USB 2.0
+            hardware.PrintLine("Detection: D+/D- both LOW = standard USB port");
+        } else {
+            // Mixed state - could be CDP or non-standard
+            // For now, assume SDP as safe default
+            portType = "SDP (Standard) or CDP (Charging Data)";
+            maxCurrent = 500;
+            hardware.PrintLine("Detection: Mixed state - assuming SDP for safety");
+        }
+        
+        hardware.PrintLine("");
+        hardware.PrintLine("Result: %s", portType);
+        hardware.PrintLine("Max Current: %dmA", maxCurrent);
+        hardware.PrintLine("Voltage: 5V (VBUS)");
+        hardware.PrintLine("Power: ~%.1fW", (maxCurrent * 5.0f) / 1000.0f);
+        hardware.PrintLine("=====================================\n");
+    }
 
     void init() override {
         // Enable serial logging
@@ -519,6 +587,9 @@ class FUSB302 : public Jaffx::Firmware {
         
         hardware.PrintLine("Initializing VBUS pin (D28)...");
         InitVBusPin();
+        
+        hardware.PrintLine("Initializing USB data pins (D29=D-, D30=D+)...");
+        InitUSBDataPins();
         
         // Check VBUS from external source
         bool vbusExt = ReadVBus();
@@ -569,7 +640,25 @@ class FUSB302 : public Jaffx::Firmware {
             
             if (activeCC == 0) {
                 hardware.PrintLine("WARNING: No CC connection detected!");
-                hardware.PrintLine("Please connect a USB-C power adapter");
+                
+                // Check if we have VBUS - this indicates USB Type-A adapter
+                bool vbusExt = ReadVBus();
+                uint8_t status0 = FUSB302_Read(REG_STATUS0);
+                bool vbusChip = (status0 & STATUS0_VBUSOK) != 0;
+                
+                if (vbusExt || vbusChip) {
+                    hardware.PrintLine("But VBUS IS present - USB Type-A adapter detected!");
+                    usbAMode = true;
+                    
+                    // Attempt BC1.2 detection
+                    DetectBC12();
+                    
+                    hardware.PrintLine("\n=== USB Type-A Mode Active ===");
+                    hardware.PrintLine("No USB-PD available (Type-A has no CC lines)");
+                    hardware.PrintLine("System will monitor VBUS and basic charging");
+                } else {
+                    hardware.PrintLine("Please connect a USB-C power adapter");
+                }
             } else {
                 hardware.PrintLine("SUCCESS: CC%d is active!", activeCC);
                 ccDetected = true;

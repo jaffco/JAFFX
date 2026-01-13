@@ -28,7 +28,7 @@ USB-C Power Delivery controller integration for Daisy Seed, enabling power profi
 - [ ] Power profile enumeration from [USB-C-Explorer](https://github.com/ReclaimerLabs/USB-C-Explorer)
 
 ### 📋 TODO (Phase 3: Advanced Features)
-- [ ] BC1.2 detection for legacy chargers
+- [x] BC1.2 detection for legacy chargers
 - [ ] Power role swap support
 - [ ] Data role configuration
 - [ ] VCONN management
