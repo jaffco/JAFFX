@@ -517,60 +517,72 @@ class FUSB302 : public Jaffx::Firmware {
     
     // BC1.2 (Battery Charging 1.2) detection for USB Type-A
     // Uses D+ (D30) and D- (D29) pins for detection
+    // Ported over from https://github.com/ReclaimerLabs/USB-C-Explorer/blob/1e312f194c6b402f8bfcd729c8bc48df8440bd78/firmware/USB-C%20Explorer/USB-C%20Explorer/main.c#L420
     void DetectBC12() {
         hardware.PrintLine("\n=== BC1.2 Detection (USB Type-A) ===");
         hardware.PrintLine("D+ on D30, D- on D29");
-        
-        InitUSBDataPins();
-        System::Delay(10); // Allow pins to settle
-        
-        // Read initial state with pull-downs enabled
-        bool dp_low = dpPin.Read();
-        bool dm_low = dmPin.Read();
-        
-        hardware.PrintLine("Initial state (with pull-downs): D+=%s D-=%s", 
-                          dp_low ? "HIGH" : "LOW", dm_low ? "HIGH" : "LOW");
-        
-        // Now configure as inputs without pull-downs to detect if shorted high
+
+        // Ensure both pins start as inputs (high-Z)
         dpPin.Init(DaisySeed::GetPin(30), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
         dmPin.Init(DaisySeed::GetPin(29), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
-        System::Delay(10);
-        
-        bool dp_float = dpPin.Read();
-        bool dm_float = dmPin.Read();
-        
-        hardware.PrintLine("Floating state (no pulls): D+=%s D-=%s", 
-                          dp_float ? "HIGH" : "LOW", dm_float ? "HIGH" : "LOW");
-        
-        // Detect port type
-        const char* portType = "UNKNOWN";
-        int maxCurrent = 0;
-        
-        if (dp_float && dm_float) {
-            // Both lines are high when floating = likely shorted together (DCP)
-            portType = "DCP (Dedicated Charging Port)";
-            maxCurrent = 1500; // 1.5A
-            hardware.PrintLine("Detection: D+/D- both HIGH when floating = shorted together");
-        } else if (!dp_float && !dm_float) {
-            // Both lines stay low = Standard Downstream Port (SDP)
-            portType = "SDP (Standard Downstream Port)";
-            maxCurrent = 500; // 500mA for USB 2.0
-            hardware.PrintLine("Detection: D+/D- both LOW = standard USB port");
-        } else {
-            // Mixed state - could be CDP or non-standard
-            // For now, assume SDP as safe default
-            portType = "SDP (Standard) or CDP (Charging Data)";
-            maxCurrent = 500;
-            hardware.PrintLine("Detection: Mixed state - assuming SDP for safety");
+        System::Delay(5);
+
+        // ----------------------------------------------------
+        // Primary Detection
+        // Drive D+ HIGH, measure D-
+        // ----------------------------------------------------
+        hardware.PrintLine("Primary Detection: Drive D+ HIGH, measure D-");
+
+        dpPin.Init(DaisySeed::GetPin(30), GPIO::Mode::OUTPUT, GPIO::Pull::NOPULL);
+        dpPin.Write(true);  // Drive D+ HIGH
+
+        dmPin.Init(DaisySeed::GetPin(29), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+        System::Delay(1);
+
+        bool dm_response = dmPin.Read();
+
+        // Release D+
+        dpPin.Init(DaisySeed::GetPin(30), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+
+        if (!dm_response)
+        {
+            // D- did NOT respond → Standard Downstream Port (SDP)
+            hardware.PrintLine("Result: SDP (Standard Downstream Port)");
+            hardware.PrintLine("Max Current: 500mA");
+            return;
         }
-        
-        hardware.PrintLine("");
-        hardware.PrintLine("Result: %s", portType);
-        hardware.PrintLine("Max Current: %dmA", maxCurrent);
-        hardware.PrintLine("Voltage: 5V (VBUS)");
-        hardware.PrintLine("Power: ~%.1fW", (maxCurrent * 5.0f) / 1000.0f);
-        hardware.PrintLine("=====================================\n");
+
+        // ----------------------------------------------------
+        // Secondary Detection
+        // Drive D- HIGH, measure D+
+        // ----------------------------------------------------
+        hardware.PrintLine("Secondary Detection: Drive D- HIGH, measure D+");
+
+        dmPin.Init(DaisySeed::GetPin(29), GPIO::Mode::OUTPUT, GPIO::Pull::NOPULL);
+        dmPin.Write(true);  // Drive D- HIGH
+
+        dpPin.Init(DaisySeed::GetPin(30), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+        System::Delay(1);
+
+        bool dp_response = dpPin.Read();
+
+        // Release D-
+        dmPin.Init(DaisySeed::GetPin(29), GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+
+        if (dp_response)
+        {
+            // D+ responds → Dedicated Charging Port (DCP)
+            hardware.PrintLine("Result: DCP (Dedicated Charging Port)");
+            hardware.PrintLine("Max Current: 1500mA (or higher per charger)");
+        }
+        else
+        {
+            // D+ does not respond → Charging Downstream Port (CDP)
+            hardware.PrintLine("Result: CDP (Charging Downstream Port)");
+            hardware.PrintLine("Max Current: 1500mA");
+        }
     }
+
 
     void init() override {
         // Enable serial logging
