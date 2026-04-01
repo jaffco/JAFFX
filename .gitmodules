@@ -4,6 +4,6 @@
 [submodule "libDaisy"]
 	path = libDaisy
 	url = https://github.com/jaffco/libDaisy
-[submodule "RTNeural"]
-	path = RTNeural
-	url = https://github.com/joeljaffesd/RTNeural
+[submodule "MicroNAM"]
+	path = MicroNAM
+	url = https://github.com/jaffco/MicroNAM

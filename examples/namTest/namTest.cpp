@@ -2,48 +2,47 @@
 #include "../../Gimmel/include/gimmel.hpp"
 #include <memory> // for unique_ptr && make_unique
 
-#include "DumbleModel.h"
-#include "MarshallModel.h"
+#include "../../MicroNAM/MicroNAM.h"
+#include "models/FenderModel.h"
+#include "models/MarshallModel.h"
 
 // Add NAM compatibility to giml
 namespace giml {
-  template <typename T, typename Layer1, typename Layer2>
-  class AmpModeler : public Effect<T> {
+  class AmpModeler : public Effect<float> {
   private:
-    wavenet::RTWavenet<1, 1, Layer1, Layer2> clean, dirty;
-    DumbleModelWeights cleanWeights;
-    MarshallModelWeights dirtyWeights;
+    MicroNAM::NanoNet<1> mFenderNet, mMarshallNet;
 
   public:
     void loadModels() {
-      this->clean.loadModel(this->cleanWeights.weights);
-      this->dirty.loadModel(this->dirtyWeights.weights);
+      static_assert(FenderModelWeightsCount == 842, "NamWavenet expects 842 weights");
+      mFenderNet.load_weights(FenderModelWeights);
+      static_assert(MarshallModelWeightsCount == 842, "NamWavenet expects 842 weights");
+      mMarshallNet.load_weights(MarshallModelWeights);
     }
     
-    T processSample(const T& input) override {
-      if (!this->enabled) { return this->clean.model.forward(input); }
-      return this->dirty.model.forward(input);
+    float processSample(const float& input) override {
+      float inputBuffer[1];
+      inputBuffer[0] = input;
+      float output[1];
+      if (!this->enabled) {
+        mFenderNet.forward(inputBuffer, output);
+        return output[0];
+      } 
+      mMarshallNet.forward(inputBuffer, output);
+      return output[0];
     }
   };
 }
 	
 class NamTest : public Jaffx::Firmware {
-  giml::AmpModeler<float, Layer1, Layer2> model;
-  std::unique_ptr<giml::Detune<float>> mDetune;
+  giml::AmpModeler mAmpModeler;
   std::unique_ptr<giml::Delay<float>> mDelay;
   std::unique_ptr<giml::Delay<float>> mDelay2;
-  giml::EffectsLine<float> mFxChain;
 
   void init() override {
     this->debug = true;
-    model.loadModels();
-    model.enable();
-    mFxChain.pushBack(&model);
-
-    mDetune = std::make_unique<giml::Detune<float>>(this->samplerate);
-    mDetune->setParams(0.995f);
-    //mDetune->enable();
-    mFxChain.pushBack(mDetune.get());
+    mAmpModeler.loadModels();
+    mAmpModeler.enable();
 
     mDelay = std::make_unique<giml::Delay<float>>(this->samplerate);
     mDelay->setParams(398.f, 0.3f, 0.7f, 0.24f);
@@ -55,7 +54,7 @@ class NamTest : public Jaffx::Firmware {
   }
 
   float processAudio(float in) override {
-    float dry = mFxChain.processSample(in);
+    float dry = mAmpModeler.processSample(in);
     float delay1 = mDelay->processSample(dry);
     float delay2 = mDelay2->processSample(dry);
     float output = giml::linMix(delay1, delay2, 0.5f);
@@ -71,5 +70,3 @@ int main() {
   mNamTest.start();
   return 0;
 }
-
-
