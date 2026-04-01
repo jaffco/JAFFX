@@ -2,27 +2,34 @@
 #include "../../Gimmel/include/gimmel.hpp"
 #include <memory> // for unique_ptr && make_unique
 
-#include "../namTest/DumbleModel.h"
-#include "../namTest/MarshallModel.h"
+#include "../../MicroNAM/MicroNAM.h"
+#include "../namTest/models/FenderModel.h"
+#include "../namTest/models/MarshallModel.h"
 
 // Add NAM compatibility to giml
 namespace giml {
-  template <typename T, typename Layer1, typename Layer2>
-  class AmpModeler : public Effect<T> {
+  class AmpModeler : public Effect<float> {
   private:
-    wavenet::RTWavenet<1, 1, Layer1, Layer2> clean, dirty;
-    DumbleModelWeights cleanWeights;
-    MarshallModelWeights dirtyWeights;
+    MicroNAM::NanoNet<1> mFenderNet, mMarshallNet;
 
   public:
     void loadModels() {
-      this->clean.loadModel(this->cleanWeights.weights);
-      this->dirty.loadModel(this->dirtyWeights.weights);
+      static_assert(FenderModelWeightsCount == 842, "NamWavenet expects 842 weights");
+      mFenderNet.load_weights(FenderModelWeights);
+      static_assert(MarshallModelWeightsCount == 842, "NamWavenet expects 842 weights");
+      mMarshallNet.load_weights(MarshallModelWeights);
     }
     
-    T processSample(const T& input) override {
-      if (!this->enabled) { return this->clean.model.forward(input); }
-      return this->dirty.model.forward(input);
+    float processSample(const float& input) override {
+      float inputBuffer[1];
+      inputBuffer[0] = input;
+      float output[1];
+      if (!this->enabled) {
+        mFenderNet.forward(inputBuffer, output);
+        return output[0];
+      } 
+      mMarshallNet.forward(inputBuffer, output);
+      return output[0];
     }
   };
 }
@@ -158,7 +165,7 @@ class Main : public Jaffx::Firmware {
 
   // effects 
   std::unique_ptr<giml::Phaser<float>> mPhaser;
-  giml::AmpModeler<float, Layer1, Layer2> mAmpModeler{};
+  giml::AmpModeler mAmpModeler;
   std::unique_ptr<giml::Expander<float>> mExpander;
   std::unique_ptr<giml::Chorus<float>> mChorus;
   std::unique_ptr<giml::Delay<float>> mDelay;
