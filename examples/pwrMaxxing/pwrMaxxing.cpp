@@ -90,11 +90,11 @@ namespace giml {
 }
 
 struct Settings {
-  bool toggles[5] = { false, false, false, false, false };
+  bool toggles[4] = { false, false, false, false };
   float params[5][3];
 
   bool operator!=(const Settings& a) const {
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
       if (toggles[i] != a.toggles[i]) { return true; }
       for (int j = 0; j < 3; j++) {
         if (params[i][j] != a.params[i][j]) { return true; }
@@ -107,8 +107,8 @@ struct Settings {
 struct InterfaceManager {
   bool editMode = false;
   int select = 0;
-  static const int numEffects = 5;
-  static const int numParams = 3;
+  static const int numEffects = 4;
+  static const int numParams = 1;
   GPIO leds[numEffects];
   Switch switches[numEffects];
   Encoder encoders[numParams + 1];
@@ -120,20 +120,22 @@ struct InterfaceManager {
     savedSettings = &saved;
     loadSettings();
 
-    switches[0].Init(seed::D18, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
-    switches[1].Init(seed::D16, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
-    switches[2].Init(seed::D2, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
-    switches[3].Init(seed::D5, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
-    switches[4].Init(seed::D3, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_NORMAL);
-    leds[0].Init(seed::D19, GPIO::Mode::OUTPUT);
-    leds[1].Init(seed::D17, GPIO::Mode::OUTPUT);
-    leds[2].Init(seed::D1, GPIO::Mode::OUTPUT);
-    leds[3].Init(seed::D6, GPIO::Mode::OUTPUT);
-    leds[4].Init(seed::D4, GPIO::Mode::OUTPUT);
-    encoders[0].Init(seed::D21, seed::D20, seed::D22);
-    encoders[1].Init(seed::D23, seed::D24, seed::D22);
-    encoders[2].Init(seed::D25, seed::D26, seed::D22);
-    encoders[3].Init(seed::D27, seed::D28, seed::D22);
+    // Footswitches (D6, D5, D4, D3) - all have internal pullups for active-low
+    switches[0].Init(seed::D6, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_INVERTED);
+    switches[1].Init(seed::D5, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_INVERTED);
+    switches[2].Init(seed::D4, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_INVERTED);
+    switches[3].Init(seed::D3, 0.f, Switch::Type::TYPE_MOMENTARY, Switch::Polarity::POLARITY_INVERTED);
+    
+    // LED indicators (D28, D26, D25, D24)
+    leds[0].Init(seed::D28, GPIO::Mode::OUTPUT);
+    // leds[1].Init(seed::D26, GPIO::Mode::OUTPUT);
+    // leds[2].Init(seed::D25, GPIO::Mode::OUTPUT);
+    // leds[3].Init(seed::D24, GPIO::Mode::OUTPUT);
+    
+    // Encoder 0: Clicking encoder for edit mode toggle (A=D2, B=D1, Click=D7)
+    encoders[0].Init(seed::D2, seed::D1, seed::D7);
+    // Encoder 1: Normal encoder for parameter adjustment (A=D14, B=D16)
+    encoders[1].Init(seed::D14, seed::D16, seed::D22);
   }
 
   void processInput() {
@@ -141,7 +143,7 @@ struct InterfaceManager {
     for (auto& s : switches) { s.Debounce(); }
 
     if (switches[0].TimeHeldMs() > 500.f) {
-      System::ResetToBootloader(System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
+      // System::ResetToBootloader(System::BootloaderMode::DAISY_INFINITE_TIMEOUT);
     }
 
     if (encoders[0].FallingEdge()) {
@@ -232,14 +234,14 @@ class PwrMaxxing : public Jaffx::Firmware {
     mCompressor->enable();
     mFxChain.pushBack(mCompressor.get());
 
-    mDisplays.registerDisplay(seed::A0);
-    mDisplays.registerDisplay(seed::A1);
-    mDisplays.registerDisplay(seed::A2);
-    mDisplays.registerDisplay(seed::A3);
+    mDisplays.registerDisplay(seed::D19);
+    mDisplays.registerDisplay(seed::D20);
+    mDisplays.registerDisplay(seed::D18);
+    mDisplays.registerDisplay(seed::D17);
 
     DisplayType::Config disp_cfg;
     disp_cfg.driver_config.transport_config.pin_config.dc = seed::D9;
-    disp_cfg.driver_config.transport_config.pin_config.reset = seed::D11;
+    disp_cfg.driver_config.transport_config.pin_config.reset = seed::D13;
     mDisplays.initDisplay(disp_cfg);
     mDisplays.flush(true);
   }
@@ -263,6 +265,7 @@ class PwrMaxxing : public Jaffx::Firmware {
   }
 
   float processAudio(float in) override {
+    return in;
     mExpander->feedSideChain(in);
     return mFxChain.processSample(in);
   }
